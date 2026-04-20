@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "Elephas maximus SDM Pipeline"
+version: "3.0.0"
+date-released: "2026-03-15"
+abstract: >
+  Constitution-driven species distribution modeling pipeline for Asian elephants
+  (Elephas maximus) across Bhutan. Implements reproducible, governance-compliant
+  SDM workflow with multi-model ensemble (GLM, Random Forest, BRT, MaxEnt),
+  CMIP6 climate projections, and uncertainty quantification.
+authors:
+  - name: "Elephas maximus SDM Team"
+    email: "team@elephas-sdm.org"
+  - name: "Conservation Biology Research Group"
+license: MIT
+repository-code: "https://github.com/elephas-sdm/Elephas_maximus_SDM_Project_v4"
+keywords:
+  - species distribution modeling
+  - Asian elephant
+  - Elephas maximus
+  - Bhutan
+  - conservation biology
+  - ensemble modeling
+  - CMIP6
+  - R

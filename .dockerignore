@@ -1,0 +1,8 @@
+04_outputs/
+06_logs/
+01_data_raw/
+.git/
+.github/
+*.Rhistory
+*.Rproj.user
+.claude/

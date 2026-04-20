@@ -1,0 +1,300 @@
+{
+  "repo_root": "E:\\Elephas_maximus_SDM_Project_v4",
+  "timestamp": "2026-02-24T13:28:15",
+  "runs": [
+    {
+      "run_id": "RUN_20260224_113154_b990",
+      "scores": {
+        "A_structural_governance": 5.0,
+        "B_data_ecological": 10.0,
+        "C_model_performance": 2.0,
+        "D_climate_projection": 2.5,
+        "E_uncertainty": 0.0,
+        "F_conservation": 0.0
+      },
+      "overall": 3.52,
+      "classification": "NOT READY",
+      "fatal_failures": [
+        "AUC<0.65 (min observed 0.354406)",
+        "TSS<0.3 (min observed 0.108293)",
+        "Configured partial scenario execution: max_future_scenarios=6 (targets require full GCM\u00d7SSP\u00d7period outputs)"
+      ],
+      "warnings": [
+        "Missing one or more required metrics artifacts: Boyce/Brier/Calibration/Moran"
+      ],
+      "key_paths": {
+        "run_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_113154_b990",
+        "manifest": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_113154_b990\\00_manifest",
+        "evaluation_csv": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_113154_b990\\02_models\\evaluation_all.csv",
+        "future_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_113154_b990\\04_future_projections",
+        "figures_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_113154_b990\\08_figures_tables"
+      }
+    },
+    {
+      "run_id": "RUN_20260224_113641_b990",
+      "scores": {
+        "A_structural_governance": 5.0,
+        "B_data_ecological": 2.0,
+        "C_model_performance": 0.0,
+        "D_climate_projection": 0.0,
+        "E_uncertainty": 0.0,
+        "F_conservation": 0.0
+      },
+      "overall": 1.15,
+      "classification": "NOT READY",
+      "fatal_failures": [
+        "Configured partial scenario execution: max_future_scenarios=6 (targets require full GCM\u00d7SSP\u00d7period outputs)"
+      ],
+      "warnings": [
+        "Missing one or more required metrics artifacts: Boyce/Brier/Calibration/Moran"
+      ],
+      "key_paths": {
+        "run_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_113641_b990",
+        "manifest": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_113641_b990\\00_manifest",
+        "evaluation_csv": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_113641_b990\\02_models\\evaluation_all.csv",
+        "future_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_113641_b990\\04_future_projections",
+        "figures_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_113641_b990\\08_figures_tables"
+      }
+    },
+    {
+      "run_id": "RUN_20260224_113826_b990",
+      "scores": {
+        "A_structural_governance": 5.0,
+        "B_data_ecological": 6.0,
+        "C_model_performance": 0.0,
+        "D_climate_projection": 0.0,
+        "E_uncertainty": 0.0,
+        "F_conservation": 0.0
+      },
+      "overall": 1.95,
+      "classification": "NOT READY",
+      "fatal_failures": [
+        "Configured partial scenario execution: max_future_scenarios=6 (targets require full GCM\u00d7SSP\u00d7period outputs)"
+      ],
+      "warnings": [
+        "Missing one or more required metrics artifacts: Boyce/Brier/Calibration/Moran"
+      ],
+      "key_paths": {
+        "run_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_113826_b990",
+        "manifest": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_113826_b990\\00_manifest",
+        "evaluation_csv": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_113826_b990\\02_models\\evaluation_all.csv",
+        "future_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_113826_b990\\04_future_projections",
+        "figures_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_113826_b990\\08_figures_tables"
+      }
+    },
+    {
+      "run_id": "RUN_20260224_114149_b990",
+      "scores": {
+        "A_structural_governance": 5.0,
+        "B_data_ecological": 6.0,
+        "C_model_performance": 0.0,
+        "D_climate_projection": 0.0,
+        "E_uncertainty": 0.0,
+        "F_conservation": 0.0
+      },
+      "overall": 1.95,
+      "classification": "NOT READY",
+      "fatal_failures": [
+        "Configured partial scenario execution: max_future_scenarios=6 (targets require full GCM\u00d7SSP\u00d7period outputs)"
+      ],
+      "warnings": [
+        "Missing one or more required metrics artifacts: Boyce/Brier/Calibration/Moran"
+      ],
+      "key_paths": {
+        "run_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114149_b990",
+        "manifest": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114149_b990\\00_manifest",
+        "evaluation_csv": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114149_b990\\02_models\\evaluation_all.csv",
+        "future_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114149_b990\\04_future_projections",
+        "figures_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114149_b990\\08_figures_tables"
+      }
+    },
+    {
+      "run_id": "RUN_20260224_114314_b990",
+      "scores": {
+        "A_structural_governance": 5.0,
+        "B_data_ecological": 6.0,
+        "C_model_performance": 0.0,
+        "D_climate_projection": 0.0,
+        "E_uncertainty": 0.0,
+        "F_conservation": 0.0
+      },
+      "overall": 1.95,
+      "classification": "NOT READY",
+      "fatal_failures": [
+        "Configured partial scenario execution: max_future_scenarios=6 (targets require full GCM\u00d7SSP\u00d7period outputs)"
+      ],
+      "warnings": [
+        "Missing one or more required metrics artifacts: Boyce/Brier/Calibration/Moran"
+      ],
+      "key_paths": {
+        "run_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114314_b990",
+        "manifest": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114314_b990\\00_manifest",
+        "evaluation_csv": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114314_b990\\02_models\\evaluation_all.csv",
+        "future_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114314_b990\\04_future_projections",
+        "figures_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114314_b990\\08_figures_tables"
+      }
+    },
+    {
+      "run_id": "RUN_20260224_114444_b990",
+      "scores": {
+        "A_structural_governance": 5.0,
+        "B_data_ecological": 6.0,
+        "C_model_performance": 0.0,
+        "D_climate_projection": 0.0,
+        "E_uncertainty": 0.0,
+        "F_conservation": 0.0
+      },
+      "overall": 1.95,
+      "classification": "NOT READY",
+      "fatal_failures": [
+        "Configured partial scenario execution: max_future_scenarios=6 (targets require full GCM\u00d7SSP\u00d7period outputs)"
+      ],
+      "warnings": [
+        "Missing one or more required metrics artifacts: Boyce/Brier/Calibration/Moran"
+      ],
+      "key_paths": {
+        "run_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114444_b990",
+        "manifest": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114444_b990\\00_manifest",
+        "evaluation_csv": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114444_b990\\02_models\\evaluation_all.csv",
+        "future_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114444_b990\\04_future_projections",
+        "figures_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114444_b990\\08_figures_tables"
+      }
+    },
+    {
+      "run_id": "RUN_20260224_114910_b990",
+      "scores": {
+        "A_structural_governance": 5.0,
+        "B_data_ecological": 6.0,
+        "C_model_performance": 0.0,
+        "D_climate_projection": 0.0,
+        "E_uncertainty": 0.0,
+        "F_conservation": 0.0
+      },
+      "overall": 1.95,
+      "classification": "NOT READY",
+      "fatal_failures": [
+        "Configured partial scenario execution: max_future_scenarios=6 (targets require full GCM\u00d7SSP\u00d7period outputs)"
+      ],
+      "warnings": [
+        "Missing one or more required metrics artifacts: Boyce/Brier/Calibration/Moran"
+      ],
+      "key_paths": {
+        "run_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114910_b990",
+        "manifest": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114910_b990\\00_manifest",
+        "evaluation_csv": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114910_b990\\02_models\\evaluation_all.csv",
+        "future_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114910_b990\\04_future_projections",
+        "figures_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_114910_b990\\08_figures_tables"
+      }
+    },
+    {
+      "run_id": "RUN_20260224_115145_b990",
+      "scores": {
+        "A_structural_governance": 5.0,
+        "B_data_ecological": 6.0,
+        "C_model_performance": 0.0,
+        "D_climate_projection": 0.0,
+        "E_uncertainty": 0.0,
+        "F_conservation": 0.0
+      },
+      "overall": 1.95,
+      "classification": "NOT READY",
+      "fatal_failures": [
+        "Configured partial scenario execution: max_future_scenarios=6 (targets require full GCM\u00d7SSP\u00d7period outputs)"
+      ],
+      "warnings": [
+        "Missing one or more required metrics artifacts: Boyce/Brier/Calibration/Moran"
+      ],
+      "key_paths": {
+        "run_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_115145_b990",
+        "manifest": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_115145_b990\\00_manifest",
+        "evaluation_csv": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_115145_b990\\02_models\\evaluation_all.csv",
+        "future_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_115145_b990\\04_future_projections",
+        "figures_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_115145_b990\\08_figures_tables"
+      }
+    },
+    {
+      "run_id": "RUN_20260224_115714_b990",
+      "scores": {
+        "A_structural_governance": 5.0,
+        "B_data_ecological": 10.0,
+        "C_model_performance": 2.0,
+        "D_climate_projection": 0.0,
+        "E_uncertainty": 0.0,
+        "F_conservation": 0.0
+      },
+      "overall": 3.15,
+      "classification": "NOT READY",
+      "fatal_failures": [
+        "AUC<0.65 (min observed 0.417911)",
+        "TSS<0.3 (min observed 0.125577)",
+        "Configured partial scenario execution: max_future_scenarios=6 (targets require full GCM\u00d7SSP\u00d7period outputs)"
+      ],
+      "warnings": [
+        "Missing one or more required metrics artifacts: Boyce/Brier/Calibration/Moran"
+      ],
+      "key_paths": {
+        "run_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_115714_b990",
+        "manifest": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_115714_b990\\00_manifest",
+        "evaluation_csv": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_115714_b990\\02_models\\evaluation_all.csv",
+        "future_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_115714_b990\\04_future_projections",
+        "figures_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_115714_b990\\08_figures_tables"
+      }
+    },
+    {
+      "run_id": "RUN_20260224_115946_b990",
+      "scores": {
+        "A_structural_governance": 5.0,
+        "B_data_ecological": 10.0,
+        "C_model_performance": 2.0,
+        "D_climate_projection": 0.0,
+        "E_uncertainty": 0.0,
+        "F_conservation": 0.0
+      },
+      "overall": 3.15,
+      "classification": "NOT READY",
+      "fatal_failures": [
+        "AUC<0.65 (min observed 0.417911)",
+        "TSS<0.3 (min observed 0.125577)",
+        "Configured partial scenario execution: max_future_scenarios=6 (targets require full GCM\u00d7SSP\u00d7period outputs)"
+      ],
+      "warnings": [
+        "Missing one or more required metrics artifacts: Boyce/Brier/Calibration/Moran"
+      ],
+      "key_paths": {
+        "run_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_115946_b990",
+        "manifest": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_115946_b990\\00_manifest",
+        "evaluation_csv": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_115946_b990\\02_models\\evaluation_all.csv",
+        "future_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_115946_b990\\04_future_projections",
+        "figures_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_115946_b990\\08_figures_tables"
+      }
+    },
+    {
+      "run_id": "RUN_20260224_120251_b990",
+      "scores": {
+        "A_structural_governance": 5.0,
+        "B_data_ecological": 10.0,
+        "C_model_performance": 2.0,
+        "D_climate_projection": 2.5,
+        "E_uncertainty": 0.0,
+        "F_conservation": 0.0
+      },
+      "overall": 3.52,
+      "classification": "NOT READY",
+      "fatal_failures": [
+        "AUC<0.65 (min observed 0.417911)",
+        "TSS<0.3 (min observed 0.125577)",
+        "Configured partial scenario execution: max_future_scenarios=6 (targets require full GCM\u00d7SSP\u00d7period outputs)"
+      ],
+      "warnings": [
+        "Missing one or more required metrics artifacts: Boyce/Brier/Calibration/Moran"
+      ],
+      "key_paths": {
+        "run_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_120251_b990",
+        "manifest": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_120251_b990\\00_manifest",
+        "evaluation_csv": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_120251_b990\\02_models\\evaluation_all.csv",
+        "future_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_120251_b990\\04_future_projections",
+        "figures_dir": "E:\\Elephas_maximus_SDM_Project_v4\\04_outputs\\runs\\RUN_20260224_120251_b990\\08_figures_tables"
+      }
+    }
+  ]
+}

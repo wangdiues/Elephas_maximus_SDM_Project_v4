@@ -1,0 +1,247 @@
+# =============================================================================
+# docker-compose.yml — Elephas maximus SDM Project v2.1
+# =============================================================================
+# Multi-service orchestration for production deployment
+# Target: Government agencies, research institutions
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ==========================================================================
+  # PRIMARY ANALYSIS SERVICE
+  # ==========================================================================
+  sdm-pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: elephas-sdm:2.1
+    container_name: elephas-sdm-pipeline
+    
+    # Runtime configuration
+    environment:
+      - R_ENVIRONMENT=production
+      - R_MAX_MEMORY=8GB
+      - R_NCPU=4
+      - LOG_LEVEL=INFO
+      - GOVERNANCE_MODE=strict
+    
+    # Volumes for data persistence
+    volumes:
+      # Input data (read-only)
+      - ./01_data_raw:/app/01_data_raw:ro
+      # Output data (read-write)
+      - ./04_outputs:/app/04_outputs:rw
+      # Logs (read-write)
+      - ./06_logs:/app/06_logs:rw
+      # Registry (read-write)
+      - ./00_registry:/app/00_registry:rw
+      # Governance (read-only)
+      - ./00_governance:/app/00_governance:ro
+      # Analysis scripts (read-only)
+      - ./03_analysis:/app/03_analysis:ro
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+        reservations:
+          cpus: '2.0'
+          memory: 4G
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "Rscript", "-e", "if (file.exists('00_governance/config.yaml')) quit(0) else quit(1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Network
+    networks:
+      - sdm-network
+    
+    # Profiles (run only when explicitly requested)
+    profiles:
+      - analysis
+      - production
+
+  # ==========================================================================
+  # VALIDATION SERVICE (Pre-flight checks)
+  # ==========================================================================
+  sdm-validation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: elephas-sdm:2.1
+    container_name: elephas-sdm-validation
+    
+    # Override entry point for validation-only mode
+    entrypoint: ["Rscript", "03_analysis/00_data_validation.R"]
+    
+    environment:
+      - R_ENVIRONMENT=validation
+      - VALIDATION_MODE=strict
+    
+    volumes:
+      - ./01_data_raw:/app/01_data_raw:ro
+      - ./00_governance:/app/00_governance:ro
+      - ./06_logs:/app/06_logs:rw
+      - ./00_registry:/app/00_registry:rw
+    
+    networks:
+      - sdm-network
+    
+    profiles:
+      - validation
+
+  # ==========================================================================
+  # TESTING SERVICE (CI/CD)
+  # ==========================================================================
+  sdm-testing:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: elephas-sdm:2.1
+    container_name: elephas-sdm-testing
+    
+    # Override for test execution
+    entrypoint: ["Rscript", "-e", "testthat::test_dir('tests/testthat', reporter='summary')"]
+    
+    environment:
+      - R_ENVIRONMENT=test
+      - CI=true
+      - NOT_CRAN=true
+    
+    volumes:
+      - ./03_analysis:/app/03_analysis:ro
+      - ./tests:/app/tests:ro
+      - ./00_governance:/app/00_governance:ro
+      - ./test_results:/app/test_results:rw
+    
+    networks:
+      - sdm-network
+    
+    profiles:
+      - ci
+      - testing
+
+  # ==========================================================================
+  # DOCUMENTATION SERVICE (Report generation)
+  # ==========================================================================
+  sdm-docs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: elephas-sdm:2.1
+    container_name: elephas-sdm-docs
+    
+    # Override for report generation
+    entrypoint: ["Rscript", "-e", "rmarkdown::render_site('05_manuscripts')"]
+    
+    environment:
+      - R_ENVIRONMENT=docs
+      - RSTUDIO_PANDOC=/usr/lib/rstudio-server/bin/pandoc
+    
+    volumes:
+      - ./04_outputs:/app/04_outputs:ro
+      - ./05_manuscripts:/app/05_manuscripts:rw
+      - ./00_governance:/app/00_governance:ro
+    
+    networks:
+      - sdm-network
+    
+    profiles:
+      - docs
+
+  # ==========================================================================
+  # WEB INTERFACE (Optional Shiny dashboard)
+  # ==========================================================================
+  sdm-dashboard:
+    image: rocker/shiny:latest
+    container_name: elephas-sdm-dashboard
+    
+    ports:
+      - "3838:3838"
+    
+    volumes:
+      - ./04_outputs:/app/data:ro
+      - ./shiny_app:/srv/shiny-server:ro
+    
+    environment:
+      - SHINY_PORT=3838
+    
+    depends_on:
+      - sdm-pipeline
+    
+    networks:
+      - sdm-network
+    
+    profiles:
+      - dashboard
+    
+    # Only for interactive use, not production
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+
+# =============================================================================
+# NETWORK CONFIGURATION
+# =============================================================================
+networks:
+  sdm-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# =============================================================================
+# VOLUME DEFINITIONS (External persistence)
+# =============================================================================
+volumes:
+  sdm_outputs:
+    driver: local
+  sdm_logs:
+    driver: local
+  sdm_registry:
+    driver: local
+
+# =============================================================================
+# USAGE INSTRUCTIONS
+# =============================================================================
+# Run full pipeline:
+#   docker-compose --profile production up sdm-pipeline
+#
+# Run validation only:
+#   docker-compose --profile validation up sdm-validation
+#
+# Run tests (CI/CD):
+#   docker-compose --profile ci up sdm-testing
+#
+# Generate reports:
+#   docker-compose --profile docs up sdm-docs
+#
+# Launch dashboard:
+#   docker-compose --profile dashboard up sdm-dashboard
+#
+# Run all services:
+#   docker-compose --profile production --profile validation up -d
+#
+# Stop all:
+#   docker-compose down --volumes
+# =============================================================================

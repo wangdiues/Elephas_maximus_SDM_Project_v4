@@ -1,0 +1,43 @@
+Package: elephas.sdm
+Type: Package
+Title: Elephas maximus SDM Pipeline
+Version: 3.0.0
+Date: 2026-03-15
+Authors@R: c(
+    person("Elephas", "maximus SDM Team", , "team@elephas-sdm.org", role = c("aut", "cre")),
+    person("Conservation Biology Research Group", role = "cph")
+  )
+Description: Constitution-driven species distribution modeling pipeline
+    for Asian elephants (Elephas maximus) across Bhutan.
+    Implements reproducible, governance-compliant SDM workflow with
+    multi-model ensemble, CMIP6 climate projections, and uncertainty
+    quantification.
+License: MIT + file LICENSE
+URL: https://github.com/elephas-sdm/Elephas_maximus_SDM_Project_v4
+BugReports: https://github.com/elephas-sdm/Elephas_maximus_SDM_Project_v4/issues
+Depends:
+    R (>= 4.3.0)
+Imports:
+    terra (>= 1.7.0),
+    sf (>= 1.0.0),
+    yaml (>= 2.3.0),
+    rlang (>= 1.0.0)
+Suggests:
+    maxnet (>= 0.1.0),
+    ranger (>= 0.15.0),
+    gbm (>= 2.1.0),
+    testthat (>= 3.0.0),
+    covr (>= 3.5.0),
+    ggplot2 (>= 3.4.0),
+    viridis (>= 0.6.0),
+    lintr (>= 3.0.0),
+    knitr (>= 1.40),
+    rmarkdown (>= 2.20)
+VignetteBuilder: knitr
+Encoding: UTF-8
+Language: en-US
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.2.3
+Config/testthat/edition: 3
+Config/testthat/parallel: false
+Config/testthat/start-first: governance

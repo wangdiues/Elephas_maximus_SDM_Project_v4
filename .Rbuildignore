@@ -1,0 +1,20 @@
+^renv\.lock$
+# R build ignore patterns
+^\.git$
+^\.gitignore$
+^\.github$
+^\.qwen$
+^\.qwenignore$
+^Dockerfile$
+^docker-compose\.yml$
+^Makefile$
+^tests$
+^test_results$
+^coverage\.xml$
+^\.Rbuildignore$
+^04_outputs/runs/
+^06_logs/
+^00_registry/.*\.csv$
+^\.Rhistory$
+^\.Rproj\.user$
+^renv$

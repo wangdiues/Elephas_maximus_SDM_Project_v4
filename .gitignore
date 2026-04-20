@@ -1,0 +1,31 @@
+## Large data and generated outputs
+01_data_raw/
+02_data_intermediate/
+04_outputs/runs/
+04_outputs/figures/
+05_manuscripts/
+06_logs/
+
+## Local tooling and editor state
+.claude/
+.git/
+.Rproj.user/
+*.Rhistory
+*.RData
+*.Ruserdata
+
+## renv local library state
+renv/library/
+renv/local/
+renv/cellar/
+renv/lock/
+renv/python/
+renv/sandbox/
+renv/staging/
+
+## Logs and temporary files
+*.log
+*.tmp
+pipeline_live.log
+pipeline_run_output*
+rerun_clip_figures.out

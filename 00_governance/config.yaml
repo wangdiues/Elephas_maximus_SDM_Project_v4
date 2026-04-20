@@ -1,0 +1,90 @@
+project:
+  name: "Elephas_maximus_SDM_Project_v4"
+  version: "3.0-bhutan-national"
+  mode: "repo-aligned-operational"
+  study_area_name: "Bhutan"
+  study_area_id: "bhutan_national"
+
+paths:
+  repo_root: "."
+  metadata_root: "00_governance"
+  raw_data_root: "01_data_raw"
+  analysis_root: "03_analysis"
+  outputs_root: "04_outputs"
+  runs_root: "04_outputs/runs"
+  manuscripts_root: "05_manuscripts"
+  logs_root: "06_logs"
+  registry_root: "00_registry"
+
+occurrence:
+  primary_input: "01_data_raw/01_occurrences/elephant_PA_data.csv"
+  fallback_input: ""
+  required_columns: ["longitude", "latitude"]
+  n_background: 10000
+
+predictors:
+  strict_predictor_extraction: true
+  baseline_climate_glob: "01_data_raw/02_rasters/present/Historical_bioclims/Historical_1986-2015_bio*.tif"
+  dem: "01_data_raw/02_rasters/dem/DEM_Bhutan_12.5NG.tif"
+  present_human_footprint: "01_data_raw/02_rasters/present/HII_Bhutan_2020.tif"
+  alternate_human_footprint: "01_data_raw/02_rasters/present/human_footprint_index.tif"
+  local_lulc_raster: ""
+  local_lulc_vector: "01_data_raw/03_vector/shapefiles/lulc/lulc2020.shp"
+  primary_landcover_source: "dynamicworld"
+  ndvi: "01_data_raw/02_rasters/vegetation_indices/Bhutan_MOD13Q1_NDVI_AnnualMean_2000_2024_STACK_QA.tif"
+  evi: "01_data_raw/02_rasters/vegetation_indices/Bhutan_MOD13Q1_EVI_AnnualMean_2000_2024_STACK_QA.tif"
+  present_landcover_dynamicworld: "01_data_raw/02_rasters/present/Bhutan_DynamicWorld_2025_label_masked_10m.tif"
+  landcover_probability_dynamicworld_glob: "01_data_raw/02_rasters/present/Bhutan_DynamicWorld_2025_top1prob_10m*.tif"
+  collinearity:
+    correlation_threshold: 0.85
+    vif_threshold: 10
+    max_predictors: 25
+
+execution:
+  run_future_projections: true
+  max_future_scenarios: 108
+
+vectors:
+  root: "01_data_raw/03_vector/shapefiles"
+  aoi_bhutan: "01_data_raw/03_vector/shapefiles/Bhutan/bhutan.shp"
+  rivers_major: "01_data_raw/03_vector/shapefiles/rivers_streams/Major_Rivers.shp"
+  streams: "01_data_raw/03_vector/shapefiles/rivers_streams/Stream_above3.shp"
+  water_sources: "01_data_raw/03_vector/shapefiles/water_sources/watershed_water_source.shp"
+  roads: "01_data_raw/03_vector/shapefiles/Roads/road_network.shp"
+  settlements: "01_data_raw/03_vector/shapefiles/Settlements/building_footprints.shp"
+  protected_areas: "01_data_raw/03_vector/shapefiles/PA_Bhutan/PA_Bnd_Final_20230316.shp"
+  private_land: "01_data_raw/03_vector/shapefiles/Pvt land/2022_07_01_cadastral_fixed.shp"
+  conflict_zones: ""
+
+climate_projections:
+  future_root: "01_data_raw/02_rasters/future"
+  gcms_contract: ["MRI-ESM2-0", "ACCESS-CM2", "CNRM-CM6-1", "CNRM-ESM2-1", "INM-CM4-8", "INM-CM5-0", "MIROC6", "MPI-ESM1-2-LR"]
+  # NOTE: ACCESS-CM2 is a confirmed outlier (composite reliability score = 0; projects 18-26% vs 7-17% for other GCMs).
+  gcm_aliases:
+    ACCESS-CM2: "ACCES_CM2"
+    CNRM-CM6-1: "CNRM_CM6_1"
+    INM-CM4-8: "INM_CM4_8"
+
+spatial:
+  target_crs_epsg: 32645
+
+reproducibility:
+  global_seed: 123456
+  per_module_seeds:
+    background_sampling: 123457
+    spatial_cv: 123458
+    model_training: 123459
+    future_projections: 123460
+
+auxiliary_data:
+  monthly_covariates: "01_data_raw/02_rasters/present/monthly_covariates.csv"
+  annual_landcover: "01_data_raw/02_rasters/present/annual_landcover.csv"
+  landcover_change_summary: "01_data_raw/02_rasters/present/landcover_change_summary.csv"
+
+logging:
+  pipeline_log: "06_logs/pipeline.log"
+  errors_log: "06_logs/errors.log"
+  warnings_log: "06_logs/warnings.log"
+
+tools:
+  maxent_jar: "05_tools/maxent/maxent.jar"

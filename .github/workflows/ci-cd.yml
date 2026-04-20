@@ -1,0 +1,408 @@
+# =============================================================================
+# GitHub Actions CI/CD — Elephas maximus SDM Project v2.1
+# =============================================================================
+# Automated testing, linting, Docker builds, and deployment
+# Target: Production-grade conservation science software
+# =============================================================================
+
+name: CI/CD Pipeline
+
+# =============================================================================
+# TRIGGERS
+# =============================================================================
+on:
+  # Push to main branches
+  push:
+    branches:
+      - main
+      - develop
+    tags:
+      - 'v*'
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.gitignore'
+  
+  # Pull requests
+  pull_request:
+    branches:
+      - main
+      - develop
+  
+  # Scheduled nightly build
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM UTC
+  
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      run_full_pipeline:
+        description: 'Run full SDM pipeline (requires data)'
+        required: false
+        default: 'false'
+        type: boolean
+
+# =============================================================================
+# ENVIRONMENT VARIABLES
+# =============================================================================
+env:
+  R_VERSION: '4.3.3'
+  DOCKER_IMAGE: elephas-sdm
+  DOCKER_REGISTRY: ghcr.io/${{ github.repository_owner }}
+
+# =============================================================================
+# JOBS
+# =============================================================================
+jobs:
+  # ==========================================================================
+  # CODE QUALITY & LINTING
+  # ==========================================================================
+  lint:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ env.R_VERSION }}
+      
+      - name: Install lintr
+        run: install.packages('lintr')
+        shell: Rscript {0}
+      
+      - name: Run lintr
+        run: |
+          library(lintr)
+          lint_results <- lint_dir("03_analysis")
+          if (length(lint_results) > 0) {
+            print(lint_results)
+            quit(status = 1)
+          }
+        shell: Rscript {0}
+      
+      - name: Check YAML syntax
+        run: |
+          python3 -c "import yaml; yaml.safe_load(open('00_governance/config.yaml'))"
+          echo "✓ config.yaml is valid YAML"
+      
+      - name: Check governance documents
+        run: |
+          test -f 00_governance/governance.md && echo "✓ governance.md exists"
+          test -f 00_governance/memory_log.md && echo "✓ memory_log.md exists"
+          test -f 00_governance/progress_tracker.md && echo "✓ progress_tracker.md exists"
+          test -f 00_governance/methods.md && echo "✓ methods.md exists"
+          test -f 00_governance/targets.md && echo "✓ targets.md exists"
+
+  # ==========================================================================
+  # UNIT TESTING
+  # ==========================================================================
+  test:
+    name: Unit Testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: lint
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ env.R_VERSION }}
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgdal-dev \
+            libgeos-dev \
+            libproj-dev \
+            libudunits2-dev \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libxml2-dev
+      
+      - name: Install R dependencies
+        run: |
+          install.packages(c(
+            'terra', 'sf', 'yaml', 'ggplot2', 'viridis',
+            'ranger', 'maxnet', 'gbm', 'rlang',
+            'testthat', 'covr'
+          ), repos = 'https://cloud.r-project.org')
+        shell: Rscript {0}
+
+      - name: Run unit tests
+        run: |
+          Rscript -e "testthat::test_dir('tests/testthat', reporter='summary', stop_on_failure=TRUE)"
+        shell: bash
+
+      - name: Calculate test coverage
+        run: |
+          source_files <- list.files('03_analysis', pattern = '^00_.*\\.R$', full.names = TRUE)
+          test_files <- list.files('tests/testthat', pattern = '^test-.*\\.R$', full.names = TRUE)
+          cov <- covr::file_coverage(source_files, test_files)
+          covr::to_cobertura(cov, 'coverage.xml')
+        shell: Rscript {0}
+        continue-on-error: true
+      
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+
+  # ==========================================================================
+  # GOVERNANCE COMPLIANCE CHECK
+  # ==========================================================================
+  governance:
+    name: Governance Compliance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: lint
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Check required governance files
+        run: |
+          echo "=== Governance Compliance Check ==="
+          
+          files=(
+            "00_governance/governance.md"
+            "00_governance/config.yaml"
+            "00_governance/methods.md"
+            "00_governance/targets.md"
+            "00_governance/memory_log.md"
+            "00_governance/progress_tracker.md"
+            "00_governance/execution_plan.md"
+            "00_governance/acceptance_criteria.md"
+            "00_governance/data_context_specification.md"
+            "00_registry/data_registry.csv"
+            "00_registry/model_registry.csv"
+            "00_registry/run_registry.csv"
+          )
+          
+          missing=0
+          for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+              echo "✓ $file"
+            else
+              echo "✗ $file MISSING"
+              ((missing++))
+            fi
+          done
+          
+          if [ $missing -gt 0 ]; then
+            echo "ERROR: $missing governance files missing"
+            exit 1
+          fi
+          
+          echo "=== All governance files present ==="
+      
+      - name: Validate config.yaml structure
+        run: |
+          python3 << 'EOF'
+          import yaml
+          import sys
+          
+          with open('00_governance/config.yaml', 'r') as f:
+              config = yaml.safe_load(f)
+          
+          required_keys = ['project', 'paths', 'occurrence', 'predictors', 'reproducibility']
+          missing = [k for k in required_keys if k not in config]
+          
+          if missing:
+              print(f"ERROR: Missing required config keys: {missing}")
+              sys.exit(1)
+          
+          print("✓ config.yaml has all required sections")
+          print(f"  Project: {config['project'].get('name', 'unnamed')}")
+          print(f"  Version: {config['project'].get('version', 'unknown')}")
+          print(f"  Seed: {config['reproducibility'].get('global_seed', 'not set')}")
+          EOF
+      
+      - name: Check compliance scorecard
+        run: |
+          if grep -q "17/17 (100%)" 00_governance/governance.md; then
+            echo "✓ Governance compliance: 100%"
+          else
+            echo "⚠ Governance compliance not at 100%"
+          fi
+
+  # ==========================================================================
+  # DOCKER BUILD
+  # ==========================================================================
+  docker:
+    name: Docker Build & Push
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: [test, governance]
+    if: github.event_name != 'pull_request'
+    
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+      
+      - name: Run Docker scan
+        uses: docker/scout-action@v1
+        with:
+          command: cves
+          image: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+          only-severities: critical,high
+          exit-code: false
+
+  # ==========================================================================
+  # INTEGRATION TEST (Optional - requires sample data)
+  # ==========================================================================
+  integration:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: docker
+    if: github.event.inputs.run_full_pipeline == 'true' || github.event_name == 'schedule'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Create sample data
+        run: |
+          mkdir -p 01_data_raw/01_occurrences
+          mkdir -p 01_data_raw/02_rasters/present
+          mkdir -p 01_data_raw/03_vector/shapefiles
+          
+          # Create minimal test occurrence data (>20 records for pipeline validation)
+          cat > 01_data_raw/01_occurrences/occurrence_bhutan.csv << 'EOF'
+          decimalLongitude,decimalLatitude,date
+          90.50,27.50,2020-01-15
+          90.52,27.52,2020-02-20
+          90.54,27.54,2020-03-10
+          90.56,27.56,2020-04-05
+          90.58,27.58,2020-05-12
+          90.60,27.60,2020-06-01
+          90.62,27.62,2020-07-15
+          90.64,27.64,2020-08-20
+          90.66,27.66,2020-09-10
+          90.68,27.68,2020-10-05
+          90.70,27.70,2020-11-12
+          90.72,27.72,2020-12-01
+          90.74,27.74,2021-01-15
+          90.76,27.76,2021-02-20
+          90.78,27.78,2021-03-10
+          90.80,27.80,2021-04-05
+          90.82,27.82,2021-05-12
+          90.84,27.84,2021-06-01
+          90.86,27.86,2021-07-15
+          90.88,27.88,2021-08-20
+          90.90,27.90,2021-09-10
+          90.55,27.55,2021-10-05
+          90.65,27.65,2021-11-12
+          90.75,27.75,2021-12-01
+          90.85,27.85,2022-01-15
+          EOF
+          
+          echo "✓ Sample data created"
+      
+      - name: Run pipeline in Docker
+        run: |
+          docker run --rm \
+            -v $(pwd):/app \
+            ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
+            00_governance/config.yaml
+      
+      - name: Collect artifacts
+        if: always()
+        run: |
+          mkdir -p test_artifacts
+          cp -r 06_logs/* test_artifacts/ 2>/dev/null || true
+          cp -r 04_outputs/* test_artifacts/ 2>/dev/null || true
+      
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: test_artifacts/
+          retention-days: 30
+
+  # ==========================================================================
+  # DEPLOYMENT (Tagged releases only)
+  # ==========================================================================
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: docker
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment: production
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          generate_release_notes: true
+          files: |
+            Dockerfile
+            docker-compose.yml
+      
+      - name: Notify deployment
+        run: |
+          echo "🚀 Deployed ${{ github.ref_name }} to production"
+          echo "Docker image: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE }}:${{ github.ref_name }}"
+
+# =============================================================================
+# WORKFLOW STATUS BADGE
+# =============================================================================
+# Add to README.md:
+# ![CI/CD](https://github.com/OWNER/REPO/actions/workflows/ci-cd.yml/badge.svg)
+# =============================================================================
