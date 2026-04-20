@@ -4,6 +4,7 @@
 
 [![R](https://img.shields.io/badge/R-4.3+-blue)](https://cran.r-project.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19659304.svg)](https://doi.org/10.5281/zenodo.19659304)
 
 ---
 
@@ -198,7 +199,20 @@ make all             # lint + test + governance check
 
 ## Citation
 
-If you use this framework, please cite:
+If you use this software, cite the archived release:
+
+```
+Wangdi, W., & Laxmi, S. (2026). Elephas maximus SDM Pipeline (v0.1.0). Zenodo.
+https://doi.org/10.5281/zenodo.19659305
+```
+
+Concept DOI for all versions:
+
+```
+https://doi.org/10.5281/zenodo.19659304
+```
+
+Related methodological references:
 
 ```
 Zurell, D., et al. (2020). A standard protocol for reporting species distribution models.
@@ -216,5 +230,5 @@ MIT License - see [LICENSE](LICENSE) file.
 
 ---
 
-**Last Updated:** 2026-03-08
-**Version:** 2.1-ensemble
+**Last Updated:** 2026-04-20
+**Public Release:** v0.1.0
