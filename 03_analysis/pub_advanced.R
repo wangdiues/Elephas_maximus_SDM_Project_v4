@@ -19,7 +19,18 @@ suppressPackageStartupMessages({
   library(dplyr)
 })
 
-RUN   <- "E:/Elephas_maximus_SDM_Project_v4/04_outputs/runs/RUN_20260317_203608_b990"
+script_file <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+if (length(script_file) == 0) {
+  frame_files <- vapply(sys.frames(), function(env) if (is.null(env$ofile)) "" else as.character(env$ofile), character(1))
+  frame_files <- frame_files[nzchar(frame_files)]
+  if (length(frame_files) > 0) script_file <- frame_files[[length(frame_files)]]
+}
+script_dir <- if (length(script_file) > 0) dirname(normalizePath(sub("^--file=", "", script_file[1]), winslash = "/", mustWork = FALSE)) else normalizePath("03_analysis", winslash = "/", mustWork = FALSE)
+source(file.path(script_dir, "00_repo_paths.R"))
+
+repo_root <- find_repo_root()
+args <- commandArgs(trailingOnly = TRUE)
+RUN   <- resolve_run_dir(if (length(args) >= 1) args[[1]] else NULL, repo_root = repo_root)
 FUT   <- file.path(RUN, "04_future_projections")
 OUT   <- file.path(RUN, "08_figures_tables")
 ADOUT <- file.path(OUT, "advanced")
@@ -47,7 +58,7 @@ CHNG_COLS <- c("#053061","#2166ac","#92c5de","#f7f7f7","#f4a582","#ca0020","#670
 # =============================================================================
 # Load common spatial objects
 # =============================================================================
-aoi_path <- "E:/Elephas_maximus_SDM_Project_v4/01_data_raw/03_vector/shapefiles/Bhutan/bhutan.shp"
+aoi_path <- repo_path("01_data_raw", "03_vector", "shapefiles", "Bhutan", "bhutan.shp", repo_root = repo_root)
 aoi <- tryCatch(st_read(aoi_path, quiet = TRUE), error = function(e) NULL)
 if (!is.null(aoi) && is.na(st_crs(aoi))) st_crs(aoi) <- 32645
 if (!is.null(aoi) && st_crs(aoi)$epsg != 32645) aoi <- st_transform(aoi, 32645)
@@ -473,7 +484,7 @@ tryCatch({
 cat("A4: PA Effectiveness Trajectories...\n")
 tryCatch({
   pa_path <- list.files(
-    "E:/Elephas_maximus_SDM_Project_v4/01_data_raw/03_vector/shapefiles/PA_Bhutan",
+    repo_path("01_data_raw", "03_vector", "shapefiles", "PA_Bhutan", repo_root = repo_root),
     pattern = "\\.shp$", full.names = TRUE)
   if (length(pa_path) == 0) stop("No PA shapefile found")
   pa_sf <- st_read(pa_path[1], quiet = TRUE)
@@ -865,8 +876,8 @@ cat("A7: Climate Velocity...\n")
 tryCatch({
   bio_var  <- "bio05"   # max temp of warmest month — key thermal constraint (future files use bio05)
   bio_var_pres <- "bio5"  # present files use bio5 (no leading zero)
-  fut_root <- "E:/Elephas_maximus_SDM_Project_v4/01_data_raw/02_rasters/future"
-  pres_bio <- "E:/Elephas_maximus_SDM_Project_v4/01_data_raw/02_rasters/present/Historical_bioclims/Historical_1986-2015_bio5.tif"
+  fut_root <- repo_path("01_data_raw", "02_rasters", "future", repo_root = repo_root)
+  pres_bio <- repo_path("01_data_raw", "02_rasters", "present", "Historical_bioclims", "Historical_1986-2015_bio5.tif", repo_root = repo_root)
 
   if (!file.exists(pres_bio)) stop("Present BIO05 not found")
   pres_bio_r <- rast(pres_bio)
@@ -1006,7 +1017,7 @@ tryCatch({
 
   # PA suitability values
   pa_path_s <- list.files(
-    "E:/Elephas_maximus_SDM_Project_v4/01_data_raw/03_vector/shapefiles/PA_Bhutan",
+    repo_path("01_data_raw", "03_vector", "shapefiles", "PA_Bhutan", repo_root = repo_root),
     pattern = "\\.shp$", full.names = TRUE)
   pa_mask_vals <- if (length(pa_path_s) > 0) {
     pa_sf_s <- st_read(pa_path_s[1], quiet = TRUE)

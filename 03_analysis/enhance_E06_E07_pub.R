@@ -10,6 +10,16 @@ library(scales)
 
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
+script_file <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+if (length(script_file) == 0) {
+  frame_files <- vapply(sys.frames(), function(env) if (is.null(env$ofile)) "" else as.character(env$ofile), character(1))
+  frame_files <- frame_files[nzchar(frame_files)]
+  if (length(frame_files) > 0) script_file <- frame_files[[length(frame_files)]]
+}
+script_dir <- if (length(script_file) > 0) dirname(normalizePath(sub("^--file=", "", script_file[1]), winslash = "/", mustWork = FALSE)) else normalizePath("03_analysis", winslash = "/", mustWork = FALSE)
+source(file.path(script_dir, "00_repo_paths.R"))
+repo_root <- find_repo_root()
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 # Human-readable predictor labels
@@ -117,11 +127,9 @@ save_pub <- function(p, path, w, h, dpi = 400) {
 # ── resolve run directory ─────────────────────────────────────────────────────
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) >= 1) {
-  run_dir <- args[1]
+  run_dir <- resolve_run_dir(args[1], repo_root = repo_root)
 } else {
-  runs_root <- "E:/Elephas_maximus_SDM_Project_v4/04_outputs/runs"
-  dirs <- list.dirs(runs_root, recursive = FALSE, full.names = TRUE)
-  run_dir <- dirs[which.max(file.info(dirs)$mtime)]
+  run_dir <- latest_run_dir(repo_root = repo_root)
 }
 cat(sprintf("Run directory: %s\n", run_dir))
 

@@ -8,11 +8,21 @@ suppressPackageStartupMessages({
   library(patchwork); library(scales)
 })
 
-RUN_DIR <- "E:/Elephas_maximus_SDM_Project_v4/04_outputs/runs/RUN_20260317_203608_b990"
+script_file <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+if (length(script_file) == 0) {
+  frame_files <- vapply(sys.frames(), function(env) if (is.null(env$ofile)) "" else as.character(env$ofile), character(1))
+  frame_files <- frame_files[nzchar(frame_files)]
+  if (length(frame_files) > 0) script_file <- frame_files[[length(frame_files)]]
+}
+script_dir <- if (length(script_file) > 0) dirname(normalizePath(sub("^--file=", "", script_file[1]), winslash = "/", mustWork = FALSE)) else normalizePath("03_analysis", winslash = "/", mustWork = FALSE)
+source(file.path(script_dir, "00_repo_paths.R"))
+
+repo_root <- find_repo_root()
+args <- commandArgs(trailingOnly = TRUE)
+RUN_DIR <- resolve_run_dir(if (length(args) >= 1) args[[1]] else NULL, repo_root = repo_root)
 OUT_DIR <- file.path(RUN_DIR, "08_figures_tables")
 FUT_DIR <- file.path(RUN_DIR, "04_future_projections")
 dir.create(OUT_DIR, recursive = TRUE, showWarnings = FALSE)
-setwd("E:/Elephas_maximus_SDM_Project_v4")
 
 # ---- Colour palettes & themes ----
 SUIT_COLS <- c("#f7f7f7","#ffffb2","#fecc5c","#fd8d3c","#f03b20","#bd0026")
@@ -64,7 +74,7 @@ pub_annotation <- function(title, subtitle="", caption="") {
 
 # ---- Load AOI ----
 load_aoi <- function() {
-  p <- "E:/Elephas_maximus_SDM_Project_v4/01_data_raw/03_vector/shapefiles/Bhutan/bhutan.shp"
+  p <- repo_path("01_data_raw", "03_vector", "shapefiles", "Bhutan", "bhutan.shp", repo_root = repo_root)
   aoi <- tryCatch(st_read(p, quiet=TRUE), error=function(e) NULL)
   if (is.null(aoi)) {
     aoi <- tryCatch(st_read(file.path(RUN_DIR,"02_data_intermediate/m_area_vector.gpkg"),

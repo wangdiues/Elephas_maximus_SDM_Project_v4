@@ -13,10 +13,19 @@ suppressPackageStartupMessages({
 has_repel    <- requireNamespace("ggrepel",   quietly = TRUE)
 has_ggspatial <- requireNamespace("ggspatial", quietly = TRUE)
 
+script_file <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+if (length(script_file) == 0) {
+  frame_files <- vapply(sys.frames(), function(env) if (is.null(env$ofile)) "" else as.character(env$ofile), character(1))
+  frame_files <- frame_files[nzchar(frame_files)]
+  if (length(frame_files) > 0) script_file <- frame_files[[length(frame_files)]]
+}
+script_dir <- if (length(script_file) > 0) dirname(normalizePath(sub("^--file=", "", script_file[1]), winslash = "/", mustWork = FALSE)) else normalizePath("03_analysis", winslash = "/", mustWork = FALSE)
+source(file.path(script_dir, "00_repo_paths.R"))
+repo_root <- find_repo_root()
+
 # ── args ──────────────────────────────────────────────────────────────────────
 args <- commandArgs(trailingOnly = TRUE)
-run_dir <- if (length(args) >= 1) args[1] else
-  "E:/Elephas_maximus_SDM_Project_v4/04_outputs/runs/RUN_20260326_104659_b990"
+run_dir <- if (length(args) >= 1) resolve_run_dir(args[1], repo_root = repo_root) else latest_run_dir(repo_root = repo_root)
 
 cat(sprintf("Run dir: %s\n", run_dir))
 
@@ -26,7 +35,6 @@ fut_dir   <- file.path(run_dir, "04_future_projections")
 over_dir  <- file.path(run_dir, "07_overlays")
 proc_dir  <- file.path(run_dir, "01_processed_data")
 interm    <- file.path(run_dir, "02_data_intermediate")
-repo_root <- normalizePath(file.path(run_dir, "../../.."), mustWork = FALSE)
 
 # ── shapefiles ────────────────────────────────────────────────────────────────
 dzong_shp <- file.path(repo_root, "01_data_raw", "03_vector", "shapefiles",

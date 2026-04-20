@@ -2,8 +2,18 @@
 # Run Phase 9 (future projections) for the 5 remaining GCMs only.
 # Skip the 3 already-completed GCMs (acces_cm2, cnrm_cm6_1, cnrm_esm2_1).
 
-repo_root <- "E:/Elephas_maximus_SDM_Project_v4"
-run_dir   <- "E:/Elephas_maximus_SDM_Project_v4/04_outputs/runs/RUN_20260317_203608_b990"
+script_file <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+if (length(script_file) == 0) {
+  frame_files <- vapply(sys.frames(), function(env) if (is.null(env$ofile)) "" else as.character(env$ofile), character(1))
+  frame_files <- frame_files[nzchar(frame_files)]
+  if (length(frame_files) > 0) script_file <- frame_files[[length(frame_files)]]
+}
+script_dir <- if (length(script_file) > 0) dirname(normalizePath(sub("^--file=", "", script_file[1]), winslash = "/", mustWork = FALSE)) else normalizePath("03_analysis", winslash = "/", mustWork = FALSE)
+source(file.path(script_dir, "00_repo_paths.R"))
+
+repo_root <- find_repo_root()
+args <- commandArgs(trailingOnly = TRUE)
+run_dir <- resolve_run_dir(if (length(args) >= 1) args[[1]] else NULL, repo_root = repo_root)
 
 setwd(repo_root)
 

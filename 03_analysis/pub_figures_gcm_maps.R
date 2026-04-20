@@ -9,7 +9,18 @@ suppressPackageStartupMessages({
   library(dplyr); library(tidyr)
 })
 
-RUN_DIR <- "E:/Elephas_maximus_SDM_Project_v4/04_outputs/runs/RUN_20260317_203608_b990"
+script_file <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+if (length(script_file) == 0) {
+  frame_files <- vapply(sys.frames(), function(env) if (is.null(env$ofile)) "" else as.character(env$ofile), character(1))
+  frame_files <- frame_files[nzchar(frame_files)]
+  if (length(frame_files) > 0) script_file <- frame_files[[length(frame_files)]]
+}
+script_dir <- if (length(script_file) > 0) dirname(normalizePath(sub("^--file=", "", script_file[1]), winslash = "/", mustWork = FALSE)) else normalizePath("03_analysis", winslash = "/", mustWork = FALSE)
+source(file.path(script_dir, "00_repo_paths.R"))
+
+repo_root <- find_repo_root()
+args <- commandArgs(trailingOnly = TRUE)
+RUN_DIR <- resolve_run_dir(if (length(args) >= 1) args[[1]] else NULL, repo_root = repo_root)
 FUT_DIR <- file.path(RUN_DIR, "04_future_projections")
 OUT_DIR <- file.path(RUN_DIR, "08_figures_tables")
 dir.create(OUT_DIR, recursive = TRUE, showWarnings = FALSE)
@@ -98,7 +109,7 @@ ALGOS_ENS   <- c("glm","rf","brt","maxent")
 
 # AOI
 aoi <- tryCatch(
-  st_read("E:/Elephas_maximus_SDM_Project_v4/01_data_raw/03_vector/shapefiles/Bhutan/bhutan.shp",
+  st_read(repo_path("01_data_raw", "03_vector", "shapefiles", "Bhutan", "bhutan.shp", repo_root = repo_root),
           quiet = TRUE),
   error = function(e) NULL
 )

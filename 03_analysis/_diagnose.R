@@ -1,9 +1,23 @@
-suppressPackageStartupMessages({ library(terra); library(sf) })
+suppressPackageStartupMessages({ library(terra); library(sf); library(yaml) })
+
+script_file <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+if (length(script_file) == 0) {
+  frame_files <- vapply(sys.frames(), function(env) if (is.null(env$ofile)) "" else as.character(env$ofile), character(1))
+  frame_files <- frame_files[nzchar(frame_files)]
+  if (length(frame_files) > 0) script_file <- frame_files[[length(frame_files)]]
+}
+script_dir <- if (length(script_file) > 0) dirname(normalizePath(sub("^--file=", "", script_file[1]), winslash = "/", mustWork = FALSE)) else normalizePath("03_analysis", winslash = "/", mustWork = FALSE)
+source(file.path(script_dir, "00_repo_paths.R"))
+repo_root <- find_repo_root()
+cfg <- yaml::read_yaml(repo_path("00_governance", "config.yaml", repo_root = repo_root))
+args <- commandArgs(trailingOnly = TRUE)
+run_dir <- resolve_run_dir(if (length(args) >= 1) args[[1]] else NULL, repo_root = repo_root)
+occ_path <- repo_path(cfg$occurrence$primary_input, repo_root = repo_root)
 
 cat("========================================\n")
 cat("OCCURRENCE DATA DIAGNOSIS\n")
 cat("========================================\n")
-occ <- read.csv("E:/Elephas_maximus_SDM_Project_v4/01_data_raw/01_occurrences/elephant_PA_data.csv")
+occ <- read.csv(occ_path)
 cat("Total records:", nrow(occ), "\n")
 cat("Presences:", sum(occ$presence == 1, na.rm = TRUE), "\n")
 cat("Absences: ", sum(occ$presence == 0, na.rm = TRUE), "\n")
@@ -19,8 +33,7 @@ print(table(cut(occ$longitude, breaks=breaks_lon)))
 cat("\n========================================\n")
 cat("MODELING DATASET DIAGNOSIS\n")
 cat("========================================\n")
-RUN <- "RUN_20260315_124209_b990"
-BASE <- paste0("E:/Elephas_maximus_SDM_Project_v4/04_outputs/runs/", RUN)
+BASE <- run_dir
 d <- read.csv(file.path(BASE, "01_processed_data/modeling_dataset.csv"))
 cat("n presences:", sum(d$response==1), "\n")
 cat("n absences (background):", sum(d$response==0), "\n")
@@ -96,7 +109,7 @@ cat("\n========================================\n")
 cat("NEW VECTOR DATA DISCOVERED\n")
 cat("========================================\n")
 cat("building_footprints.shp (Settlements/):\n")
-bf <- tryCatch(st_read("E:/Elephas_maximus_SDM_Project_v4/01_data_raw/03_vector/shapefiles/Settlements/building_footprints.shp", quiet=TRUE), error=function(e) NULL)
+bf <- tryCatch(st_read(repo_path("01_data_raw", "03_vector", "shapefiles", "Settlements", "building_footprints.shp", repo_root = repo_root), quiet=TRUE), error=function(e) NULL)
 if (!is.null(bf)) {
   cat("  Features:", nrow(bf), "| CRS:", st_crs(bf)$input, "\n")
   bb <- st_bbox(bf)
@@ -104,7 +117,7 @@ if (!is.null(bf)) {
 }
 
 cat("2022_07_01_cadastral_fixed.shp (Pvt land/):\n")
-cad <- tryCatch(st_read("E:/Elephas_maximus_SDM_Project_v4/01_data_raw/03_vector/shapefiles/Pvt land/2022_07_01_cadastral_fixed.shp", quiet=TRUE), error=function(e) NULL)
+cad <- tryCatch(st_read(repo_path("01_data_raw", "03_vector", "shapefiles", "Pvt land", "2022_07_01_cadastral_fixed.shp", repo_root = repo_root), quiet=TRUE), error=function(e) NULL)
 if (!is.null(cad)) {
   cat("  Features:", nrow(cad), "| CRS:", st_crs(cad)$input, "\n")
   bb <- st_bbox(cad)

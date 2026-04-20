@@ -23,14 +23,22 @@ suppressPackageStartupMessages({
   if (requireNamespace("tidyr", quietly = TRUE)) library(tidyr)
 })
 
+script_file <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+if (length(script_file) == 0) {
+  frame_files <- vapply(sys.frames(), function(env) if (is.null(env$ofile)) "" else as.character(env$ofile), character(1))
+  frame_files <- frame_files[nzchar(frame_files)]
+  if (length(frame_files) > 0) script_file <- frame_files[[length(frame_files)]]
+}
+script_dir <- if (length(script_file) > 0) dirname(normalizePath(sub("^--file=", "", script_file[1]), winslash = "/", mustWork = FALSE)) else normalizePath("03_analysis", winslash = "/", mustWork = FALSE)
+source(file.path(script_dir, "00_repo_paths.R"))
+repo_root <- find_repo_root()
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) >= 1) {
-  RUN <- normalizePath(args[[1]], winslash = "/", mustWork = TRUE)
+  RUN <- resolve_run_dir(args[[1]], repo_root = repo_root)
 } else {
-  runs_root <- "E:/Elephas_maximus_SDM_Project_v4/04_outputs/runs"
-  run_dirs  <- sort(list.dirs(runs_root, recursive = FALSE, full.names = TRUE))
-  RUN <- run_dirs[length(run_dirs)]
+  RUN <- latest_run_dir(repo_root = repo_root)
 }
 FUT <- file.path(RUN, "04_future_projections")
 OUT <- file.path(RUN, "08_figures_tables", "redesign")
@@ -83,7 +91,7 @@ PER_LABEL <- c("2021–2050","2051–2080","2071–2100")
 ALGOS     <- c("glm","rf","brt","maxent")
 
 # ── AOI ───────────────────────────────────────────────────────────────────────
-aoi_path <- "E:/Elephas_maximus_SDM_Project_v4/01_data_raw/03_vector/shapefiles/Bhutan/bhutan.shp"
+aoi_path <- repo_path("01_data_raw", "03_vector", "shapefiles", "Bhutan", "bhutan.shp", repo_root = repo_root)
 aoi <- tryCatch(st_read(aoi_path, quiet = TRUE), error = function(e) NULL)
 if (!is.null(aoi)) {
   if (is.na(st_crs(aoi))) st_crs(aoi) <- 32645
