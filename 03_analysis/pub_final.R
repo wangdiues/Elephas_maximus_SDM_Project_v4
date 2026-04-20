@@ -626,7 +626,7 @@ if (!is.null(eval_df) && !is.null(roc_df)) {
   fig7 <- (p_roc | (p_heat / p_auc)) + plot_layout(widths=c(1.4,1))
   fig7 <- fig7 + plot_annotation(
     title    = bquote(paste(italic("Elephas maximus"), " SDM — Model Validation | Bhutan")),
-    subtitle = "Spatial cross-validation (5 folds) | Out-of-fold holdout predictions | 150 unique GPS collar locations",
+    subtitle = "Spatial cross-validation (5 folds) | Out-of-fold holdout predictions | 252 presence records from station-level survey data",
     caption  = "Boyce Index: 0.987 (excellent) | AUC range: 0.925–0.958 | Green = better performance",
     theme=theme(plot.title=element_text(size=13,face="bold",hjust=0.5),
                 plot.subtitle=element_text(size=9,hjust=0.5,colour="grey35"),

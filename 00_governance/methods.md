@@ -23,11 +23,10 @@ Study area: Bhutan (national)
 ## D — Data
 
 ### Occurrence data
-- Source: GPS collar telemetry, Bhutan-wide
-- Raw records: 123
+- Source: station-level presence-absence survey data (`station_survey`, `book1_survey`)
+- Raw records: 1,089 total (252 presence, 837 absence)
 - Coordinate system: decimal degrees (WGS 84)
 - Thinning: exact duplicate removal; spatial thinning to ≥ 0.1 km grid
-- Temporal filter: 1986–2015 (matching baseline climate)
 
 ### Background / pseudo-absence data
 - Method: random sampling within accessible area (M = Bhutan national boundary)

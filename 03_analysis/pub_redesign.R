@@ -663,7 +663,7 @@ if (file.exists(eval_file) && file.exists(roc_file)) {
     plot_layout(widths = c(1.2, 1.3, 0.9)) +
     plot_annotation(
       title    = expression(paste(italic("Elephas maximus"), " SDM — model validation | Bhutan")),
-      subtitle = "5-fold spatial cross-validation | Out-of-fold holdout predictions | 150 GPS collar locations",
+      subtitle = "5-fold spatial cross-validation | Out-of-fold holdout predictions | 252 presence records from station-level survey data",
       caption  = "Blue heatmap: darker = better performance | Boyce Index: >0.5 = good | Brier: lower = better",
       theme = theme(
         plot.title    = element_text(size = 11, face = "bold", hjust = 0.5),

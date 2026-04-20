@@ -126,7 +126,7 @@ brew install gdal geos proj udunits
 ### Data files missing
 
 Download required data files:
-- Occurrence data: GPS collar telemetry CSV
+- Occurrence data: station-level presence-absence CSV (`elephant_PA_data.csv`)
 - Climate data: WorldClim or provided rasters
 - Vector data: Provided shapefiles
 

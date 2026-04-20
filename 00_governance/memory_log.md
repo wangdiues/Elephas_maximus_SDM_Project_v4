@@ -4,6 +4,19 @@ Chronological record of key modelling and governance decisions.
 
 ---
 
+## 2026-04-20: Occurrence dataset authority reconciled to elephant_PA_data.csv
+
+**Decision**: Treat `01_data_raw/01_occurrences/elephant_PA_data.csv` as the authoritative operational occurrence input for the repository.
+
+**Rationale**: This is the occurrence file that is actually present in the repository and referenced by the active `config.yaml`. It contains 1,089 station-level records with `longitude` / `latitude` columns and binary `presence` values, which matches the current operational pipeline configuration.
+
+**Consequences**:
+- Governance and registry files must name `elephant_PA_data.csv` as the active occurrence input.
+- `occurrence_bhutan.csv` remains a historical planning reference only; it is not the packaged operational input in this repository.
+- Validation criteria, execution gates, and documentation should use the `longitude` / `latitude` schema and the station-level record counts from `elephant_PA_data.csv`.
+
+---
+
 ## 2026-03-15: Study area migration to Bhutan-wide (v3.0)
 
 **Decision**: Change study area from South Central Bhutan to all of Bhutan.

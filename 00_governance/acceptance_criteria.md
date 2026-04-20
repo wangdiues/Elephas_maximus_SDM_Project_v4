@@ -11,7 +11,7 @@ A run is considered successful when ALL of the following criteria are met.
 
 | Criterion | Requirement | Test |
 |-----------|-------------|------|
-| Occurrence file loads | 123 records, decimalLongitude/decimalLatitude columns present | Phase 1 log |
+| Occurrence file loads | 1,089 records, longitude/latitude columns present | Phase 1 log |
 | Coordinates in bounds | All points within Bhutan (lon 88.5–92.5°E, lat 26.5–28.5°N) | Phase 3 output |
 | Occurrence post-thinning | ≥ 30 unique presence locations | Phase 3 log |
 | AOI CRS | EPSG:32645 (not NA) after loading + reprojection | Phase 2 log |

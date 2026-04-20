@@ -7,16 +7,24 @@ Updated: 2026-03-15
 
 ## Occurrence Data
 
-### occurrence_bhutan.csv (ACTIVE — v3.0)
+### elephant_PA_data.csv (ACTIVE — v3.0)
+| Field | Value |
+|-------|-------|
+| Path | 01_data_raw/01_occurrences/elephant_PA_data.csv |
+| Records | 1,089 station records (252 presence, 837 absence) |
+| Coordinate columns | longitude, latitude |
+| CRS | WGS 84 (EPSG:4326) |
+| Source | Compiled station-level survey data (`station_survey`, `book1_survey`) |
+| Quality notes | Presence/absence records at survey stations; downstream deduplication and spatial processing applied in Phase 3 |
+| Registry ID | occ_raw_004 |
+
+### occurrence_bhutan.csv (DEPRECATED / NOT PACKAGED)
 | Field | Value |
 |-------|-------|
 | Path | 01_data_raw/01_occurrences/occurrence_bhutan.csv |
 | Records | 123 |
 | Coordinate columns | decimalLongitude, decimalLatitude |
-| CRS | WGS 84 (EPSG:4326) |
-| Source | GPS collar telemetry, Bhutan-wide |
-| Temporal coverage | Post-1986 (matching baseline climate window) |
-| Quality notes | No obvious spatial duplicates in first review; deduplication applied in Phase 3 |
+| Status | Historical planning reference; not the operational input in the current repository |
 | Registry ID | occ_raw_003 |
 
 ### occurrence_south_central_bhutan.csv (DEPRECATED)
@@ -24,7 +32,7 @@ Updated: 2026-03-15
 |-------|-------|
 | Path | 01_data_raw/01_occurrences/occurrence_south_central_bhutan.csv |
 | Records | 82,684 raw (150 unique GPS locations) |
-| Status | DEPRECATED — superseded by occurrence_bhutan.csv for v3.0 |
+| Status | DEPRECATED — superseded operationally by elephant_PA_data.csv for v3.0 |
 | Registry ID | occ_raw_002 |
 
 ---

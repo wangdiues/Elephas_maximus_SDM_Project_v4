@@ -11,7 +11,7 @@ Last updated: 2026-03-15
 |-------|------|--------|-------|
 | 0 | Config + seed init | READY | Updated for Bhutan |
 | 0b | Governance validation | READY | Governance files created |
-| 1 | Data ingest & harmonise | READY | occurrence_bhutan.csv |
+| 1 | Data ingest & harmonise | READY | elephant_PA_data.csv |
 | 2 | Accessible area (M) | READY | bhutan.shp, EPSG:32645 |
 | 3 | Occurrence processing | READY | decimalLon/Lat columns |
 | 4 | Background sampling | READY | n=10,000 |
@@ -30,7 +30,7 @@ Last updated: 2026-03-15
 ## Migration Checklist (South Central Bhutan → Bhutan)
 
 ### Config & Registry
-- [x] config.yaml: occurrence.primary_input → occurrence_bhutan.csv
+- [x] config.yaml: occurrence.primary_input → elephant_PA_data.csv
 - [x] config.yaml: vectors.aoi_bhutan added; aoi_south_central_bhutan removed
 - [x] config.yaml: settlements disabled (SCB-only)
 - [x] config.yaml: private_land disabled (SCB-only)
@@ -38,7 +38,7 @@ Last updated: 2026-03-15
 - [x] config.yaml: project.study_area_name + study_area_id added
 - [x] config.yaml: per_module_seeds added
 - [x] config.yaml: version → 3.0-bhutan-national
-- [x] data_registry.csv: occ_raw_003 (occurrence_bhutan.csv) added
+- [x] data_registry.csv: occ_raw_004 (elephant_PA_data.csv) added
 - [x] data_registry.csv: aoi_002 (bhutan.shp) added
 - [x] DESCRIPTION: version 3.0.0; R >= 4.3.0; description updated
 
@@ -77,11 +77,11 @@ Last updated: 2026-03-15
 ## Pending (Post-Migration Gates)
 
 ### Gate 1: Validation only
-- [ ] Run `00_data_validation.R` — expect clean pass with bhutan.shp + occurrence_bhutan.csv
+- [ ] Run `00_data_validation.R` — expect clean pass with bhutan.shp + elephant_PA_data.csv
 
 ### Gate 2: Phases 1–6
 - [ ] AOI loads, CRS = EPSG:32645
-- [ ] 123 occurrence records loaded, coordinate columns detected
+- [ ] 1,089 occurrence records loaded, `longitude` / `latitude` columns detected
 - [ ] Background sampling within Bhutan boundary succeeds
 - [ ] Predictor extraction over Bhutan extent completes
 

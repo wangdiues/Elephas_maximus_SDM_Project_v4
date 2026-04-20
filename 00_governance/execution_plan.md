@@ -14,7 +14,7 @@ Run the pipeline in four sequential gates rather than one full jump. Each gate m
 Rscript 03_analysis/00_data_validation.R 00_governance/config.yaml
 ```
 Pass criteria:
-- occurrence_bhutan.csv loads; 123 records with decimalLongitude/decimalLatitude
+- elephant_PA_data.csv loads; 1,089 records with longitude/latitude
 - bhutan.shp loads; CRS is not NA
 - All non-empty predictor paths resolve to existing files
 - BIO raster glob finds ≥ 19 files

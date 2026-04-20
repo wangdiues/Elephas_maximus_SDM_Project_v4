@@ -1,6 +1,6 @@
-# Elephas maximus SDM Project v2.1
+# Elephas maximus SDM Project v3.0
 
-**Species Distribution Modeling for Asian Elephants in South Central Bhutan**
+**Species Distribution Modeling for Asian Elephants in Bhutan**
 
 [![R](https://img.shields.io/badge/R-4.3+-blue)](https://cran.r-project.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -9,12 +9,12 @@
 
 ## Project Overview
 
-This project implements a governance-compliant Species Distribution Modeling (SDM) pipeline for Asian elephants (*Elephas maximus*) in South Central Bhutan under CMIP6 climate change scenarios.
+This project implements a governance-compliant Species Distribution Modeling (SDM) pipeline for Asian elephants (*Elephas maximus*) in Bhutan under CMIP6 climate change scenarios.
 
 This GitHub repository is the code and metadata layer of the project. Large
 raw data, generated run directories, logs, and working manuscript files are
 kept out of version control and should be published separately only after
-reviewing size, licensing, and telemetry sensitivity constraints.
+reviewing size, licensing, and species-location sensitivity constraints.
 
 ### Key Features
 
@@ -32,7 +32,7 @@ reviewing size, licensing, and telemetry sensitivity constraints.
 ### Study Area & Data
 
 - **CRS**: EPSG:32645 (WGS 84 / UTM Zone 45N)
-- **Occurrence Data**: 150 unique GPS collar telemetry locations
+- **Occurrence Data**: 1,089 station-level presence-absence records (252 presences, 837 absences)
 - **Background Points**: ~10,000 bias-corrected
 - **Predictors**: 19 bioclimatic + DEM + HFI + NDVI + EVI + distance layers (25 total)
 
