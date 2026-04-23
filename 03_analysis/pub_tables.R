@@ -11,7 +11,7 @@
 # Usage (PowerShell):
 #   Rscript 03_analysis/pub_tables.R [run_dir]
 #
-# Defaults to latest run in 04_outputs/runs/.
+# Defaults to latest run in 04_outputs/ or 04_outputs/runs/.
 # =============================================================================
 
 suppressPackageStartupMessages({ library(terra); library(sf) })
@@ -19,16 +19,14 @@ suppressPackageStartupMessages({ library(terra); library(sf) })
 # ── Resolve paths ─────────────────────────────────────────────────────────────
 args     <- commandArgs(trailingOnly = TRUE)
 repo_root <- normalizePath(".", winslash = "/")
+source(file.path(repo_root, "03_analysis", "00_contract_helpers.R"), local = TRUE)
 
 if (length(args) >= 1) {
   RUN <- normalizePath(args[[1]], winslash = "/", mustWork = TRUE)
 } else {
-  runs_root <- file.path(repo_root, "04_outputs", "runs")
-  run_dirs  <- sort(list.dirs(runs_root, recursive = FALSE, full.names = TRUE))
-  if (length(run_dirs) == 0) stop("No run directories found in ", runs_root)
-  RUN <- run_dirs[length(run_dirs)]
+  RUN <- find_latest_run_dir(repo_root)
 }
-run_id <- basename(RUN)
+run_id <- read_run_id_from_manifest(RUN)
 OUT    <- file.path(RUN, "08_figures_tables")
 dir.create(OUT, recursive = TRUE, showWarnings = FALSE)
 

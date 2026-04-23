@@ -68,7 +68,7 @@ Elephas_maximus_SDM_Project_v4/
 │   ├── 11_uncertainty.R
 │   ├── 12_conservation_overlays.R
 │   └── 13_synthesis_reporting.R
-├── 04_outputs/runs/        # Run outputs (RUN_<timestamp>_<hash>/)
+├── 04_outputs/             # Run outputs live directly here as RUN_<timestamp>_<hash>/
 ├── 06_logs/                # pipeline.log, errors.log, warnings.log
 ├── tests/testthat/         # Unit + integration tests
 ├── Dockerfile

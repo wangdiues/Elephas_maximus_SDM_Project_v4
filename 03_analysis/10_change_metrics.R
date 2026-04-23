@@ -7,6 +7,11 @@
 
 module_10_change_metrics <- function(run_dir, config_path = NULL, threshold = 0.5) {
 
+  safe_write_raster <- function(r, path) {
+    if (file.exists(path)) unlink(path, force = TRUE)
+    terra::writeRaster(r, path, overwrite = TRUE)
+  }
+
   # Read TSS-optimized threshold from evaluation_all.csv if available
   eval_csv <- file.path(run_dir, "02_models", "evaluation_all.csv")
   if (file.exists(eval_csv)) {
@@ -75,7 +80,7 @@ module_10_change_metrics <- function(run_dir, config_path = NULL, threshold = 0.
     # C01: Delta suitability map
     d          <- r - present
     delta_path <- file.path(out_dir, paste0("delta_suitability_", base, ".tif"))
-    terra::writeRaster(d, delta_path, overwrite = TRUE)
+    safe_write_raster(d, delta_path)
 
     # C02: Gain / loss / persistence binary maps
     p0        <- present >= threshold
@@ -86,9 +91,9 @@ module_10_change_metrics <- function(run_dir, config_path = NULL, threshold = 0.
     gain_path <- file.path(out_dir, paste0("gain_",        base, ".tif"))
     loss_path <- file.path(out_dir, paste0("loss_",        base, ".tif"))
     pers_path <- file.path(out_dir, paste0("persistence_", base, ".tif"))
-    terra::writeRaster(gain_rast, gain_path, overwrite = TRUE)
-    terra::writeRaster(loss_rast, loss_path, overwrite = TRUE)
-    terra::writeRaster(pers_rast, pers_path, overwrite = TRUE)
+    safe_write_raster(gain_rast, gain_path)
+    safe_write_raster(loss_rast, loss_path)
+    safe_write_raster(pers_rast, pers_path)
 
     # C03: Zonal statistics per protected area
     if (!is.null(pa_vec) && file.exists(pa_vec)) {

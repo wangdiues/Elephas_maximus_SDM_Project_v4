@@ -17,20 +17,16 @@ repo_root <- cfg$paths$repo_root
 if (is.null(repo_root) || !nzchar(repo_root)) repo_root <- "."
 repo_root <- normalizePath(repo_root, winslash = "/", mustWork = FALSE)
 
+source(file.path(repo_root, "03_analysis", "00_contract_helpers.R"), local = TRUE)
+
 # Locate run directory
-runs_root <- file.path(repo_root, cfg$paths$runs_root %||% "04_outputs/runs")
 if (length(args) >= 1) {
   run_id <- args[1]
+  run_dir <- locate_run_dir(repo_root, cfg, run_id)
 } else {
-  dirs <- sort(list.dirs(runs_root, recursive = FALSE, full.names = FALSE), decreasing = TRUE)
-  dirs <- dirs[grepl("^RUN_", dirs)]
-  if (length(dirs) == 0) stop("No run directories found in ", runs_root)
-  run_id <- dirs[1]
+  run_dir <- find_latest_run_dir(repo_root, cfg)
+  run_id <- read_run_id_from_manifest(run_dir)
 }
-
-`%||%` <- function(x, y) if (is.null(x) || !length(x) || (is.character(x) && !nzchar(x))) y else x
-
-run_dir <- file.path(runs_root, run_id)
 if (!dir.exists(run_dir)) stop("Run directory not found: ", run_dir)
 cat(sprintf("=== RESUMING from Phase 9 ===\nRun ID:  %s\nRun dir: %s\n\n", run_id, run_dir))
 
@@ -89,7 +85,12 @@ if (run_future) {
   tryCatch({
     max_future <- cfg$execution$max_future_scenarios
     if (is.null(max_future) || !is.finite(max_future)) max_future <- 12L
-    fut_res <- project_future_with_mess(repo_root, run_dir, as.integer(max_future))
+    fut_res <- project_future_with_mess(
+      repo_root,
+      run_dir,
+      as.integer(max_future),
+      skip_existing = TRUE
+    )
     append_log(pipeline_log, "INFO", run_id,
                paste("Phase 9: Complete (scenarios =", fut_res$n_scenarios, ")"))
   }, error = function(e9) {

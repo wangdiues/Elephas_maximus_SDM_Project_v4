@@ -123,7 +123,7 @@ cat("\n")
 # Create required directories
 cat("Creating directories...\n")
 dirs_to_create <- c(
-  "04_outputs/runs",
+  "04_outputs",
   "06_logs",
   "00_registry"
 )

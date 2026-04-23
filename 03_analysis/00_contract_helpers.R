@@ -14,6 +14,10 @@ suppressPackageStartupMessages({
   library(sf)
 })
 
+`%||%` <- function(x, y) {
+  if (is.null(x) || !length(x) || (is.character(x) && !nzchar(x))) y else x
+}
+
 # =============================================================================
 # CONFIG LOADING
 # =============================================================================
@@ -50,12 +54,12 @@ resolve_path <- function(path, repo_root = NULL) {
   normalizePath(path, winslash = "/", mustWork = FALSE)
 }
 
-#' Create run directory structure
-#' @param runs_root Base runs directory
-#' @param run_id Run identifier
+#' Create output directory structure directly under output_root
+#' @param output_root Fixed output root (e.g. 04_outputs/)
+#' @param run_id Ignored; kept for signature compatibility
 #' @return List of directory paths
-create_run_structure <- function(runs_root, run_id) {
-  run_dir <- file.path(runs_root, run_id)
+create_run_structure <- function(output_root, run_id = NULL) {
+  run_dir <- output_root
   dirs <- c("00_manifest", "01_processed_data", "02_models",
             "03_present_suitability", "04_future_projections",
             "05_change_metrics", "06_uncertainty", "07_overlays",
@@ -67,6 +71,92 @@ create_run_structure <- function(runs_root, run_id) {
       "future_dir", "change_dir", "uncertainty_dir", "overlay_dir",
       "figure_dir", "report_dir")
   )
+}
+
+#' Read run_id from manifest JSON written by run_pipeline.R
+#' @param run_dir Output directory (may be 04_outputs/ or legacy RUN_* dir)
+#' @return run_id string, or "current" if manifest not found
+read_run_id_from_manifest <- function(run_dir) {
+  manifest_file <- file.path(run_dir, "00_manifest", "run_manifest.json")
+  if (!file.exists(manifest_file)) return("current")
+  mlines <- readLines(manifest_file, warn = FALSE)
+  m <- regmatches(mlines, regexpr('"run_id":[[:space:]]*"[^"]+"', mlines))
+  if (length(m) == 0) return("current")
+  sub('"run_id":[[:space:]]*"([^"]+)"', "\\1", m[1])
+}
+
+#' Discover run roots from config, with compatibility for legacy layouts
+#' @param repo_root Repository root
+#' @param cfg Optional loaded config
+#' @return Character vector of candidate run roots
+discover_run_roots <- function(repo_root, cfg = NULL) {
+  paths <- if (!is.null(cfg) && !is.null(cfg$paths)) cfg$paths else list()
+  roots <- c(paths$runs_root, paths$outputs_root, "04_outputs")
+  roots <- roots[!is.na(roots) & nzchar(roots)]
+  roots <- unique(vapply(roots, function(root) {
+    normalizePath(file.path(repo_root, root), winslash = "/", mustWork = FALSE)
+  }, character(1)))
+  roots
+}
+
+#' List all run directories, newest first
+#' @param repo_root Repository root
+#' @param cfg Optional loaded config
+#' @return Character vector of RUN_* directories
+list_run_dirs <- function(repo_root, cfg = NULL) {
+  roots <- discover_run_roots(repo_root, cfg)
+  out <- character()
+
+  for (root in roots) {
+    if (!dir.exists(root)) next
+
+    candidates <- list.dirs(root, recursive = FALSE, full.names = TRUE)
+    candidates <- candidates[grepl("^RUN_", basename(candidates))]
+
+    legacy_root <- file.path(root, "runs")
+    if (basename(root) == "04_outputs" && dir.exists(legacy_root)) {
+      legacy_candidates <- list.dirs(legacy_root, recursive = FALSE, full.names = TRUE)
+      legacy_candidates <- legacy_candidates[grepl("^RUN_", basename(legacy_candidates))]
+      candidates <- c(candidates, legacy_candidates)
+    }
+
+    out <- c(out, candidates)
+  }
+
+  out <- unique(out[dir.exists(out)])
+  if (length(out) == 0) return(out)
+  out[order(file.info(out)$mtime, decreasing = TRUE)]
+}
+
+#' Return the fixed output root (04_outputs/) — no per-run subdirectory
+#' @param repo_root Repository root
+#' @param cfg Optional loaded config
+#' @return Absolute path to the output root directory
+find_latest_run_dir <- function(repo_root, cfg = NULL) {
+  paths <- if (!is.null(cfg) && !is.null(cfg$paths)) cfg$paths else list()
+  outputs_root <- normalizePath(
+    file.path(repo_root, paths$outputs_root %||% "04_outputs"),
+    winslash = "/", mustWork = FALSE
+  )
+  if (!dir.exists(outputs_root)) dir.create(outputs_root, recursive = TRUE, showWarnings = FALSE)
+  outputs_root
+}
+
+#' Resolve a run directory: checks legacy RUN_* dirs first, then returns fixed output root
+#' @param repo_root Repository root
+#' @param cfg Optional loaded config
+#' @param run_id Run identifier (used only for legacy RUN_* lookup)
+#' @return Absolute path to the run directory
+locate_run_dir <- function(repo_root, cfg = NULL, run_id) {
+  roots <- discover_run_roots(repo_root, cfg)
+  for (root in roots) {
+    candidate <- file.path(root, run_id)
+    if (dir.exists(candidate)) return(candidate)
+    legacy_candidate <- file.path(root, "runs", run_id)
+    if (dir.exists(legacy_candidate)) return(legacy_candidate)
+  }
+  # New style: fixed output root (no per-run subdirectory)
+  find_latest_run_dir(repo_root, cfg)
 }
 
 # =============================================================================

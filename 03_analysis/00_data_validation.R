@@ -76,7 +76,6 @@ build_report_lines <- function(success, cfg, selected_input, required_cols, mapp
     paste0("- repo_root: ", cfg$repo_root),
     paste0("- raw_data_root: ", cfg$raw_data_root),
     paste0("- outputs_root: ", cfg$outputs_root),
-    paste0("- runs_root: ", cfg$runs_root),
     paste0("- logs_root: ", cfg$logs_root),
     paste0("- registry_root: ", cfg$registry_root),
     "",
@@ -125,7 +124,6 @@ validate_pipeline <- function(config_path = "00_governance/config.yaml", report_
     repo_root     = get_val("paths$repo_root",     "repo_root"),
     raw_data_root = get_val("paths$raw_data_root", "raw_data_root"),
     outputs_root  = get_val("paths$outputs_root",  "outputs_root"),
-    runs_root     = get_val("paths$runs_root",      "runs_root"),
     logs_root     = get_val("paths$logs_root",      "logs_root"),
     registry_root = get_val("paths$registry_root", "registry_root"),
     primary_input = get_val("occurrence$primary_input",  "primary_input"),
@@ -136,13 +134,12 @@ validate_pipeline <- function(config_path = "00_governance/config.yaml", report_
   cfg$repo_root <- as_abs_path(".", cfg$repo_root)
   cfg$raw_data_root <- as_abs_path(cfg$repo_root, cfg$raw_data_root)
   cfg$outputs_root <- as_abs_path(cfg$repo_root, cfg$outputs_root)
-  cfg$runs_root <- as_abs_path(cfg$repo_root, cfg$runs_root)
   cfg$logs_root <- as_abs_path(cfg$repo_root, cfg$logs_root)
   cfg$registry_root <- as_abs_path(cfg$repo_root, cfg$registry_root)
   primary_input <- as_abs_path(cfg$repo_root, cfg$primary_input)
   fallback_input <- as_abs_path(cfg$repo_root, cfg$fallback_input)
 
-  must_dirs <- c(cfg$repo_root, cfg$raw_data_root, cfg$outputs_root, cfg$runs_root, cfg$logs_root, cfg$registry_root)
+  must_dirs <- c(cfg$repo_root, cfg$raw_data_root, cfg$outputs_root, cfg$logs_root, cfg$registry_root)
   for (d in must_dirs) {
     if (is.na(d) || !dir.exists(d)) {
       errors <- c(errors, paste0("Missing required directory: ", d))

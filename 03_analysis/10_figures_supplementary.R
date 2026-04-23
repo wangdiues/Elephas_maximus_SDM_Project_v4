@@ -234,8 +234,8 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
   # ── S1: Suitability by algorithm — 5-panel (GLM/RF/BRT/MaxEnt + Ensemble) ───
   tryCatch({
     pres_dir <- file.path(run_dir, "03_present_suitability")
-    algos    <- c("glm", "rf", "brt", "maxent", "ensemble")
-    labels   <- c("GLM", "RF", "BRT", "MaxEnt", "Ensemble")
+    algos    <- c("glm", "rf", "brt", "maxent")
+    labels   <- c("GLM", "RF", "BRT", "MaxEnt")
     panels   <- list()
 
     for (i in seq_along(algos)) {
@@ -249,16 +249,13 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
       p <- ggplot() +
         geom_raster(data = df, aes(x = x, y = y, fill = value)) +
         .supp_suit_scale("Suitability\n(0\u20131)") +
-        .boundary_geoms(crs(r), with_dzong = TRUE) +
+        # S1 is the publication figure version without Dzongkhag labels.
+        .boundary_geoms(crs(r), with_dzong = FALSE) +
         annotate("label", x = Inf, y = -Inf,
                  label = sprintf("%.1f%% suitable", pct),
                  hjust = 1.1, vjust = -0.3, size = 2.8, fill = "white", alpha = 0.85) +
         labs(title = labels[i]) +
         .supp_map_theme(9) + coord_sf()
-
-      # Bold border for ensemble panel
-      if (algos[i] == "ensemble")
-        p <- p + theme(panel.border = element_rect(color = "#333333", linewidth = 1.5, fill = NA))
 
       panels[[labels[i]]] <- p
     }
@@ -267,10 +264,10 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
 
     if (!has_patchwork) stop("patchwork required for S1")
 
-    out <- patchwork::wrap_plots(panels, ncol = 3) +
+    out <- patchwork::wrap_plots(panels, ncol = 2) +
       patchwork::plot_annotation(
         title    = "Present Habitat Suitability by Algorithm \u2014 Elephas maximus | Bhutan",
-        subtitle = "Ensemble components: GLM, Random Forest, Boosted Regression Trees, MaxEnt | Ensemble (bold border)",
+        subtitle = "Ensemble components: GLM, Random Forest, Boosted Regression Trees, MaxEnt",
         tag_levels = "A"
       )
 
@@ -1879,7 +1876,18 @@ local({
   args <- commandArgs(trailingOnly = TRUE)
   if (length(args) >= 1 && !exists("run_dir", envir = .GlobalEnv)) {
     run_dir <- normalizePath(args[1], winslash = "/", mustWork = FALSE)
-    run_id  <- if (length(args) >= 2) args[2] else basename(run_dir)
+    run_id  <- if (length(args) >= 2) args[2] else {
+      if (exists("read_run_id_from_manifest", mode = "function")) {
+        read_run_id_from_manifest(run_dir)
+      } else {
+        mf <- file.path(run_dir, "00_manifest", "run_manifest.json")
+        if (file.exists(mf)) {
+          ml <- readLines(mf, warn = FALSE)
+          mm <- regmatches(ml, regexpr('"run_id":[[:space:]]*"[^"]+"', ml))
+          if (length(mm) > 0) sub('"run_id":[[:space:]]*"([^"]+)"', "\\1", mm[1]) else "current"
+        } else "current"
+      }
+    }
     message("Standalone: generating supplementary figures for ", run_id)
     create_supplementary_figures(run_dir, run_id)
   }

@@ -11,6 +11,11 @@ if (!exists("align_raster", mode = "function")) {
 }
 
 compute_uncertainty <- function(run_dir) {
+  safe_write_raster <- function(r, path) {
+    if (file.exists(path)) unlink(path, force = TRUE)
+    writeRaster(r, path, overwrite = TRUE)
+  }
+
   fut_dir <- file.path(run_dir, "04_future_projections")
   out_dir <- file.path(run_dir, "06_uncertainty")
   dir.create(out_dir, recursive = TRUE)
@@ -71,9 +76,9 @@ compute_uncertainty <- function(run_dir) {
       gcm_sd <- gcm_mean[[1]] * 0
     }
     gcm_sd_file <- file.path(out_dir, paste0("gcm_sd_", tolower(s), "_", gsub("-", "_", p), ".tif"))
-    writeRaster(gcm_sd, gcm_sd_file, overwrite = TRUE)
+    safe_write_raster(gcm_sd, gcm_sd_file)
     # legacy naming retained
-    writeRaster(gcm_sd, file.path(out_dir, paste0("uncertainty_gcm_sd_", s, "_", gsub("-", "_", p), ".tif")), overwrite = TRUE)
+    safe_write_raster(gcm_sd, file.path(out_dir, paste0("uncertainty_gcm_sd_", s, "_", gsub("-", "_", p), ".tif")))
 
     # Mean across GCMs by algorithm, then SD across algorithms
     algo_mean <- list()
@@ -95,12 +100,12 @@ compute_uncertainty <- function(run_dir) {
       algo_sd <- gcm_sd * 0
     }
     algo_file <- file.path(out_dir, paste0("algorithm_uncertainty_", tolower(s), "_", gsub("-", "_", p), ".tif"))
-    writeRaster(algo_sd, algo_file, overwrite = TRUE)
+    safe_write_raster(algo_sd, algo_file)
 
     # Combined uncertainty
     combined <- sqrt(gcm_sd * gcm_sd + algo_sd * algo_sd)
     combined_file <- file.path(out_dir, paste0("combined_uncertainty_", tolower(s), "_", gsub("-", "_", p), ".tif"))
-    writeRaster(combined, combined_file, overwrite = TRUE)
+    safe_write_raster(combined, combined_file)
 
     # Agreement gain/loss vs present threshold
     out_gain <- NA_character_
@@ -114,8 +119,8 @@ compute_uncertainty <- function(run_dir) {
       agreement_loss <- app(rast(loss_stack), function(v) mean(v, na.rm = TRUE))
       out_gain <- file.path(out_dir, paste0("agreement_gain_", tolower(s), "_", gsub("-", "_", p), ".tif"))
       out_loss <- file.path(out_dir, paste0("agreement_loss_", tolower(s), "_", gsub("-", "_", p), ".tif"))
-      writeRaster(agreement_gain, out_gain, overwrite = TRUE)
-      writeRaster(agreement_loss, out_loss, overwrite = TRUE)
+      safe_write_raster(agreement_gain, out_gain)
+      safe_write_raster(agreement_loss, out_loss)
     }
     
     out_idx <- rbind(out_idx, data.frame(

@@ -9,7 +9,7 @@
 #   Rscript 03_analysis/rerun_phases_10_12.R [run_dir] [config_path]
 #
 # Defaults:
-#   run_dir     = 04_outputs/runs/<latest>
+#   run_dir     = 04_outputs/ (fixed output root, no per-run subdirectory)
 #   config_path = 00_governance/config.yaml
 # =============================================================================
 
@@ -26,17 +26,16 @@ script_dir  <- tryCatch(
 )
 repo_root <- normalizePath(file.path(script_dir, ".."), winslash = "/", mustWork = FALSE)
 
+source(file.path(repo_root, "03_analysis", "00_contract_helpers.R"), local = TRUE)
+
 # Determine run_dir
 if (length(args) >= 1) {
   run_dir <- normalizePath(args[[1]], winslash = "/", mustWork = TRUE)
 } else {
-  runs_root <- file.path(repo_root, "04_outputs", "runs")
-  run_dirs  <- sort(list.dirs(runs_root, recursive = FALSE, full.names = TRUE))
-  if (length(run_dirs) == 0) stop("No run directories found in ", runs_root)
-  run_dir   <- run_dirs[length(run_dirs)]  # latest
-  cat(sprintf("Using latest run: %s\n", basename(run_dir)))
+  run_dir <- find_latest_run_dir(repo_root)
+  cat(sprintf("Using output dir: %s\n", run_dir))
 }
-run_id <- basename(run_dir)
+run_id <- read_run_id_from_manifest(run_dir)
 
 cat(sprintf("\n=== Standalone Phase 10-12 + Figures re-run ===\n"))
 cat(sprintf("Run dir:    %s\n", run_dir))

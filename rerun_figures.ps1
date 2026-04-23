@@ -32,9 +32,8 @@ function Resolve-Rscript {
 }
 
 if (-not $RunDir) {
-  $runs = Get-ChildItem "04_outputs\runs" -Directory | Sort-Object LastWriteTime -Descending
-  if ($runs.Count -eq 0) { throw "No runs found in 04_outputs/runs" }
-  $RunDir = $runs[0].FullName
+  $RunDir = "04_outputs"
+  if (-not (Test-Path $RunDir)) { throw "Output directory '04_outputs' not found" }
 }
 
 $rscript = Resolve-Rscript

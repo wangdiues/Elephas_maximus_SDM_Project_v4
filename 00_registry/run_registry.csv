@@ -59,3 +59,4 @@ RUN_20260326_234724_b990,2026-03-26 23:50:17,NA,2.1-ensemble,FALSE,2.88,04_outpu
 RUN_20260327_063729_b990,2026-03-27 06:46:45,NA,2.1-ensemble,FALSE,9.248,04_outputs/runs/RUN_20260327_063729_b990,NA,NA,NA,"cannot open the connection"
 RUN_20260327_065550_b990,2026-03-27 06:59:05,NA,2.1-ensemble,FALSE,3.236,04_outputs/runs/RUN_20260327_065550_b990,NA,NA,NA,"cannot open the connection"
 RUN_20260327_070925_b990,2026-03-27 07:12:47,af9476db088c9258936b1a2e2b338609,2.1-ensemble,FALSE,3.358,04_outputs/runs/RUN_20260327_070925_b990,NA,NA,NA,"[writeRaster] path does not exist"
+RUN_20260422_065242_b990,2026-04-22 07:28:32,c31a6443075774edfbf85ce5e015f7ad,2.1-ensemble,TRUE,35.843,E:/Elephas_maximus_SDM_Project_v4/04_outputs,252,837,17,"success"

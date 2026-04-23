@@ -72,7 +72,7 @@ jobs:
           r-version: ${{ env.R_VERSION }}
       
       - name: Install lintr
-        run: install.packages('lintr')
+        run: install.packages('lintr', repos = 'https://cloud.r-project.org')
         shell: Rscript {0}
       
       - name: Run lintr

@@ -323,18 +323,18 @@ main <- function() {
   
   # Paths (guard against cfg$paths being NULL)
   paths <- cfg$paths %||% list()
-  runs_root <- file.path(repo_root, paths$runs_root %||% "04_outputs/runs")
+  outputs_root <- file.path(repo_root, paths$outputs_root %||% "04_outputs")
   logs_root <- file.path(repo_root, paths$logs_root %||% "06_logs")
   registry_root <- file.path(repo_root, paths$registry_root %||% "00_registry")
-  
+
   # Create directories
-  dir.create(runs_root, recursive = TRUE)
+  dir.create(outputs_root, recursive = TRUE)
   dir.create(logs_root, recursive = TRUE)
   dir.create(registry_root, recursive = TRUE)
-  
-  # Create run
+
+  # Fixed output root — all outputs written directly into 04_outputs/
   run_id <- make_run_id()
-  run_dir <- file.path(runs_root, run_id)
+  run_dir <- outputs_root
   manifest_dir <- file.path(run_dir, "00_manifest")
   dir.create(manifest_dir, recursive = TRUE)
   

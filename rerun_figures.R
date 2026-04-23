@@ -3,16 +3,7 @@
 # Usage: Rscript rerun_figures.R [run_dir] [config_path]
 
 args <- commandArgs(trailingOnly = TRUE)
-run_dir     <- if (length(args) >= 1) args[[1]] else {
-  runs <- list.dirs("04_outputs/runs", recursive = FALSE, full.names = TRUE)
-  runs <- runs[order(file.info(runs)$mtime, decreasing = TRUE)]
-  runs[1]
-}
-config_path <- if (length(args) >= 2) args[[2]] else "00_governance/config.yaml"
-
 repo_root <- normalizePath(".", winslash = "/")
-run_id    <- basename(run_dir)
-cat(sprintf("Regenerating figures for: %s\n", run_id))
 
 # Source helpers
 for (f in c("00_logging.R", "00_sdm_helpers.R", "00_contract_helpers.R",
@@ -28,6 +19,13 @@ if (file.exists(file.path(repo_root, "03_analysis", "10_figures_enhanced.R")))
 if (file.exists(file.path(repo_root, "03_analysis", "10_figures_supplementary.R")))
   tryCatch(source(file.path(repo_root, "03_analysis", "10_figures_supplementary.R"), local = TRUE),
     error = function(e) message("Could not source 10_figures_supplementary.R: ", e$message))
+
+run_dir     <- if (length(args) >= 1) args[[1]] else {
+  find_latest_run_dir(repo_root)
+}
+config_path <- if (length(args) >= 2) args[[2]] else "00_governance/config.yaml"
+run_id      <- read_run_id_from_manifest(run_dir)
+cat(sprintf("Regenerating figures for: %s\n", run_id))
 
 # Basic figures
 cat("Running create_all_figures...\n")

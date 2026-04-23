@@ -14,7 +14,7 @@
 #
 # Usage (PowerShell):
 #   Rscript 03_analysis/10_figures_enhanced.R <run_dir>
-#   Rscript 03_analysis/10_figures_enhanced.R 04_outputs/runs/RUN_20260317_203608_b990
+#   Rscript 03_analysis/10_figures_enhanced.R 04_outputs
 # =============================================================================
 
 suppressPackageStartupMessages({

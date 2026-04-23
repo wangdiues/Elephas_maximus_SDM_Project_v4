@@ -17,4 +17,4 @@ Write-Host "=== Step 2: Generate all publication figures ==="
 
 Write-Host ""
 Write-Host "=== All done. Figures saved to:"
-Write-Host "  $DIR\04_outputs\runs\RUN_20260317_203608_b990\08_figures_tables\"
+Write-Host "  $DIR\04_outputs\08_figures_tables\"

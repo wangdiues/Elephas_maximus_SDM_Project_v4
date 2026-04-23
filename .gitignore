@@ -1,8 +1,19 @@
 ## Large data and generated outputs
 01_data_raw/
 02_data_intermediate/
+04_outputs/00_manifest/
+04_outputs/01_processed_data/
+04_outputs/02_models/
+04_outputs/03_present_suitability/
+04_outputs/04_future_projections/
+04_outputs/05_change_metrics/
+04_outputs/06_uncertainty/
+04_outputs/07_overlays/
+04_outputs/08_figures_tables/
+04_outputs/09_reports/
 04_outputs/runs/
 04_outputs/figures/
+04_outputs/*.md
 05_manuscripts/
 06_logs/
 

@@ -47,12 +47,11 @@ repo_path <- function(..., repo_root = find_repo_root()) {
 }
 
 latest_run_dir <- function(repo_root = find_repo_root()) {
-  runs_root <- repo_path("04_outputs", "runs", repo_root = repo_root)
-  dirs <- list.dirs(runs_root, recursive = FALSE, full.names = TRUE)
-  if (length(dirs) == 0) {
-    stop(sprintf("No run directories found under %s", runs_root))
+  outputs_root <- repo_path("04_outputs", repo_root = repo_root)
+  if (!dir.exists(outputs_root)) {
+    stop(sprintf("Output directory not found: %s", outputs_root))
   }
-  normalizePath(dirs[[which.max(file.info(dirs)$mtime)]], winslash = "/", mustWork = TRUE)
+  normalizePath(outputs_root, winslash = "/", mustWork = TRUE)
 }
 
 resolve_run_dir <- function(run = NULL, repo_root = find_repo_root()) {
@@ -64,9 +63,14 @@ resolve_run_dir <- function(run = NULL, repo_root = find_repo_root()) {
     return(normalizePath(run, winslash = "/", mustWork = TRUE))
   }
 
-  candidate <- repo_path("04_outputs", "runs", run, repo_root = repo_root)
+  # Check legacy RUN_* subdirectory under 04_outputs (direct or under runs/)
+  candidate <- repo_path("04_outputs", run, repo_root = repo_root)
   if (dir.exists(candidate)) {
     return(normalizePath(candidate, winslash = "/", mustWork = TRUE))
+  }
+  legacy_candidate <- repo_path("04_outputs", "runs", run, repo_root = repo_root)
+  if (dir.exists(legacy_candidate)) {
+    return(normalizePath(legacy_candidate, winslash = "/", mustWork = TRUE))
   }
 
   stop(sprintf("Run directory not found: %s", run))

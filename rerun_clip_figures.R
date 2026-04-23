@@ -1,5 +1,7 @@
 setwd("E:/Elephas_maximus_SDM_Project_v4")
-run_dir <- tail(sort(list.files("04_outputs/runs", full.names = TRUE)), 1)
+source("03_analysis/00_contract_helpers.R")
+run_dir <- find_latest_run_dir(normalizePath(".", winslash = "/"))
+run_id  <- read_run_id_from_manifest(run_dir)
 cat("Run dir:", run_dir, "\n")
 
 # Regenerate conflict map (E enhanced figures)
@@ -9,5 +11,5 @@ cat("Enhanced figures done\n")
 
 # Regenerate supplementary (S11, S16)
 source("03_analysis/10_figures_supplementary.R")
-create_supplementary_figures(run_dir)
+create_supplementary_figures(run_dir, run_id)
 cat("Supplementary figures done\n")

@@ -53,6 +53,15 @@ safe_mean_raster <- function(r) {
   }, error = function(e) NA_real_)
 }
 
+ph9_write_raster <- function(r, path, skip_existing = FALSE) {
+  if (file.exists(path)) {
+    if (isTRUE(skip_existing)) return(FALSE)
+    unlink(path, force = TRUE)
+  }
+  writeRaster(r, path, overwrite = TRUE)
+  TRUE
+}
+
 # Sample matrix from a SpatRaster stack without pulling all cells into RAM
 sample_stack_matrix <- function(stk, size = 5000) {
   df <- terra::spatSample(stk, size = size, method = "random", na.rm = TRUE, as.df = TRUE)
@@ -372,20 +381,20 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
         out_dir,
         sprintf("suitability_future_%s_%s_%s_%s.tif", gcm_tag, ssp_tag, period_tag, algo)
       )
-      writeRaster(pred, out_file, overwrite = TRUE)
+      ph9_write_raster(pred, out_file, skip_existing = skip_existing)
     }
     
     # Save MESS + novelty assessment + extrapolation mask
     mess_file <- file.path(out_dir, sprintf("mess_%s_%s_%s.tif", gcm_tag, ssp_tag, period_tag))
-    writeRaster(mess_rast, mess_file, overwrite = TRUE)
+    ph9_write_raster(mess_rast, mess_file, skip_existing = skip_existing)
 
     # F02: Novelty assessment map (targets.md) — alias of MESS raster
     novelty_file <- file.path(out_dir, sprintf("novelty_%s_%s_%s.tif", gcm_tag, ssp_tag, period_tag))
-    writeRaster(mess_rast, novelty_file, overwrite = TRUE)
+    ph9_write_raster(mess_rast, novelty_file, skip_existing = skip_existing)
 
     extrapolation <- mess_rast < 0
     ex_file <- file.path(out_dir, sprintf("extrapolation_%s_%s_%s.tif", gcm_tag, ssp_tag, period_tag))
-    writeRaster(extrapolation, ex_file, overwrite = TRUE)
+    ph9_write_raster(extrapolation, ex_file, skip_existing = skip_existing)
     
     # Log success
     n_done <- n_done + 1
@@ -440,7 +449,7 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
         st <- rast(ff)
         ens <- if (nlyr(st) == 1) st else app(st, function(v) mean(v, na.rm = TRUE))
         ens_file <- file.path(out_dir, sprintf("future_gcm_ensemble_%s_%s.tif", ssp_tag, period_tag))
-        writeRaster(ens, ens_file, overwrite = TRUE)
+        ph9_write_raster(ens, ens_file, skip_existing = skip_existing)
         rm(st, ens); gc(verbose = FALSE)
       }, error = function(e) {
         cat(sprintf("  Warning: ensemble TIF skipped for %s_%s: %s\n", ssp, period, conditionMessage(e)))

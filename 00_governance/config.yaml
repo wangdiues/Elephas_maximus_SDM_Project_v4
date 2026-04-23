@@ -11,7 +11,6 @@ paths:
   raw_data_root: "01_data_raw"
   analysis_root: "03_analysis"
   outputs_root: "04_outputs"
-  runs_root: "04_outputs/runs"
   manuscripts_root: "05_manuscripts"
   logs_root: "06_logs"
   registry_root: "00_registry"

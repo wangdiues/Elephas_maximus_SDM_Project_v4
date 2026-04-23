@@ -6,7 +6,7 @@
 #   Rscript 03_analysis/generate_fig1_study_area.R <run_dir> [out_png]
 #
 # Defaults:
-#   run_dir = most recent RUN_* in 04_outputs/runs/
+#   run_dir = most recent RUN_* in 04_outputs/ or 04_outputs/runs/
 #   out_png = <run_dir>/08_figures_tables/figure_01_study_area_cv.png
 #
 # Reads:
@@ -27,17 +27,15 @@ repo_root <- normalizePath(
   if (file.exists("../00_governance/config.yaml")) ".." else
   stop("Run from project root"), mustWork = FALSE)
 
+source(file.path(repo_root, "03_analysis", "00_contract_helpers.R"), local = TRUE)
+
 args    <- commandArgs(trailingOnly = TRUE)
 
 # ── Resolve run_dir ───────────────────────────────────────────────────────────
 if (length(args) >= 1) {
   run_dir <- normalizePath(args[[1]], mustWork = TRUE)
 } else {
-  runs    <- list.dirs(file.path(repo_root, "04_outputs", "runs"),
-                       full.names = TRUE, recursive = FALSE)
-  runs    <- runs[grepl("^RUN_", basename(runs))]
-  if (length(runs) == 0) stop("No RUN_* directories found in 04_outputs/runs/")
-  run_dir <- runs[which.max(file.info(runs)$mtime)]
+  run_dir <- find_latest_run_dir(repo_root)
   cat(sprintf("Using run: %s\n", basename(run_dir)))
 }
 

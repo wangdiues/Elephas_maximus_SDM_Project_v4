@@ -24,6 +24,16 @@ safe_mean_extract <- function(r, v) {
   out
 }
 
+safe_write_raster <- function(r, path) {
+  if (file.exists(path)) unlink(path, force = TRUE)
+  writeRaster(r, path, overwrite = TRUE)
+}
+
+safe_write_csv <- function(df, path) {
+  if (file.exists(path)) unlink(path, force = TRUE)
+  write.csv(df, path, row.names = FALSE)
+}
+
 run_overlays <- function(repo_root, run_dir) {
   out_dir <- file.path(run_dir, "07_overlays")
   dir.create(out_dir, recursive = TRUE)
@@ -64,15 +74,16 @@ run_overlays <- function(repo_root, run_dir) {
           area_km2 = sum(st_area(pa), na.rm = TRUE) / 1e6,
           stringsAsFactors = FALSE
         )
-        write.csv(pa_summary, file.path(out_dir, "suitability_within_PAs.csv"), row.names = FALSE)
-        idx <- rbind(idx, data.frame(layer = "protected_areas", path = file.path(out_dir, "suitability_within_PAs.csv"), stringsAsFactors = FALSE))
+        pa_csv <- file.path(out_dir, "suitability_within_PAs.csv")
+        safe_write_csv(pa_summary, pa_csv)
+        idx <- rbind(idx, data.frame(layer = "protected_areas", path = pa_csv, stringsAsFactors = FALSE))
 
         # Generate PA suitability raster for R07 figure
         tryCatch({
           pa_v <- vect(pa)
           if (!isTRUE(crs(pa_v) == crs(suit))) pa_v <- project(pa_v, crs(suit))
           pa_suit_rast <- mask(suit, pa_v)
-          writeRaster(pa_suit_rast, file.path(out_dir, "suitability_within_PAs.tif"), overwrite = TRUE)
+          safe_write_raster(pa_suit_rast, file.path(out_dir, "suitability_within_PAs.tif"))
         }, error = function(e) {
           cat(sprintf("  PA raster generation failed: %s\n", conditionMessage(e)))
         })
@@ -103,8 +114,9 @@ run_overlays <- function(repo_root, run_dir) {
           area_km2 = sum(st_area(private_land), na.rm = TRUE) / 1e6,
           stringsAsFactors = FALSE
         )
-        write.csv(private_summary, file.path(out_dir, "suitability_within_private_land.csv"), row.names = FALSE)
-        idx <- rbind(idx, data.frame(layer = "private_land", path = file.path(out_dir, "suitability_within_private_land.csv"), stringsAsFactors = FALSE))
+        pvt_csv <- file.path(out_dir, "suitability_within_private_land.csv")
+        safe_write_csv(private_summary, pvt_csv)
+        idx <- rbind(idx, data.frame(layer = "private_land", path = pvt_csv, stringsAsFactors = FALSE))
         cat("  Private land analysis complete\n")
       }
     }
@@ -131,8 +143,9 @@ run_overlays <- function(repo_root, run_dir) {
           area_km2 = sum(st_area(conflict), na.rm = TRUE) / 1e6,
           stringsAsFactors = FALSE
         )
-        write.csv(conflict_summary, file.path(out_dir, "suitability_within_conflict_zones.csv"), row.names = FALSE)
-        idx <- rbind(idx, data.frame(layer = "conflict_zones", path = file.path(out_dir, "suitability_within_conflict_zones.csv"), stringsAsFactors = FALSE))
+        conf_csv <- file.path(out_dir, "suitability_within_conflict_zones.csv")
+        safe_write_csv(conflict_summary, conf_csv)
+        idx <- rbind(idx, data.frame(layer = "conflict_zones", path = conf_csv, stringsAsFactors = FALSE))
         cat("  Conflict analysis complete\n")
       }
     }
@@ -159,8 +172,9 @@ run_overlays <- function(repo_root, run_dir) {
           n_cells = vapply(lulc_summary$suitability, function(x) x[[2]], numeric(1)),
           stringsAsFactors = FALSE
         )
-        write.csv(lulc_summary, file.path(out_dir, "suitability_by_local_lulc.csv"), row.names = FALSE)
-        idx <- rbind(idx, data.frame(layer = "local_lulc", path = file.path(out_dir, "suitability_by_local_lulc.csv"), stringsAsFactors = FALSE))
+        lulc_csv <- file.path(out_dir, "suitability_by_local_lulc.csv")
+        safe_write_csv(lulc_summary, lulc_csv)
+        idx <- rbind(idx, data.frame(layer = "local_lulc", path = lulc_csv, stringsAsFactors = FALSE))
         cat("  Local LULC summary complete\n")
       }
     }
@@ -221,7 +235,8 @@ run_overlays <- function(repo_root, run_dir) {
       station_df$longitude <- coords[, 1]
       station_df$latitude  <- coords[, 2]
       station_df$geometry  <- NULL
-      write.csv(station_df, file.path(out_dir, "station_conservation_overlay.csv"), row.names = FALSE)
+      station_csv <- file.path(out_dir, "station_conservation_overlay.csv")
+      safe_write_csv(station_df, station_csv)
 
       # Aggregate summary
       summary_rows <- lapply(c("presence", "absence"), function(pt) {
@@ -237,8 +252,9 @@ run_overlays <- function(repo_root, run_dir) {
         )
       })
       summary_df <- do.call(rbind, summary_rows)
-      write.csv(summary_df, file.path(out_dir, "station_zone_summary.csv"), row.names = FALSE)
-      idx <- rbind(idx, data.frame(layer = "station_overlay", path = file.path(out_dir, "station_zone_summary.csv"), stringsAsFactors = FALSE))
+      station_zone_csv <- file.path(out_dir, "station_zone_summary.csv")
+      safe_write_csv(summary_df, station_zone_csv)
+      idx <- rbind(idx, data.frame(layer = "station_overlay", path = station_zone_csv, stringsAsFactors = FALSE))
       cat("  Station-level overlay complete\n")
     }, error = function(e) {
       cat(sprintf("  Station overlay failed: %s\n", conditionMessage(e)))
@@ -276,9 +292,10 @@ run_overlays <- function(repo_root, run_dir) {
     }
     
     proximity_df <- do.call(rbind, proximity_results)
-    write.csv(proximity_df, file.path(out_dir, "proximity_analysis.csv"), row.names = FALSE)
+    prox_csv <- file.path(out_dir, "proximity_analysis.csv")
+    safe_write_csv(proximity_df, prox_csv)
     
-    idx <- rbind(idx, data.frame(layer = "proximity", path = file.path(out_dir, "proximity_analysis.csv"), stringsAsFactors = FALSE))
+    idx <- rbind(idx, data.frame(layer = "proximity", path = prox_csv, stringsAsFactors = FALSE))
     cat("  Proximity analysis complete\n")
   }
   
@@ -304,11 +321,12 @@ run_overlays <- function(repo_root, run_dir) {
   management$value[4] <- sum(suit_vals > 0.7, na.rm = TRUE) * cell_area
   management$value[5] <- sum(suit_vals < 0.3, na.rm = TRUE) * cell_area
   
-  write.csv(management, file.path(out_dir, "management_indicators.csv"), row.names = FALSE)
-  idx <- rbind(idx, data.frame(layer = "management", path = file.path(out_dir, "management_indicators.csv"), stringsAsFactors = FALSE))
+  management_csv <- file.path(out_dir, "management_indicators.csv")
+  safe_write_csv(management, management_csv)
+  idx <- rbind(idx, data.frame(layer = "management", path = management_csv, stringsAsFactors = FALSE))
   
   if (nrow(idx) > 0) {
-    write.csv(idx, file.path(out_dir, "overlay_index.csv"), row.names = FALSE)
+    safe_write_csv(idx, file.path(out_dir, "overlay_index.csv"))
   }
   
   cat(sprintf("Phase 12 complete: %d overlay layers\n", nrow(idx)))

@@ -64,7 +64,7 @@ The pipeline will:
 
 Results are saved to:
 ```
-04_outputs/runs/RUN_YYYYMMDD_HHMMSS_<id>/
+04_outputs/RUN_YYYYMMDD_HHMMSS_<id>/
 ├── 00_manifest/
 ├── 01_processed_data/
 ├── 02_models/
