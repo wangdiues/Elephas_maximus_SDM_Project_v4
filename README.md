@@ -202,7 +202,7 @@ make all             # lint + test + governance check
 If you use this software, cite the archived release:
 
 ```
-Wangdi, W., & Laxmi, S. (2026). Elephas maximus SDM Pipeline (v0.1.0). Zenodo.
+Wangdi, & Sagar, L. (2026). Elephas maximus SDM Pipeline (v0.1.0). Zenodo.
 https://doi.org/10.5281/zenodo.19659305
 ```
 
