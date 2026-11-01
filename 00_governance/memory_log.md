@@ -4,6 +4,26 @@ Chronological record of key modelling and governance decisions.
 
 ---
 
+## 2026-11-02: Accepted production run RUN_20261102_031801_b990
+
+**Run**: `04_outputs/runs/RUN_20261102_031801_b990` was produced from commit `f45a359` with a clean worktree. All 26 submission-validation checks passed: 60/60 projections, 12 summaries, refugia denominator 60, complete OOF predictions and hash-matched provenance. All of its files are read-only. Every number in the manuscript comes from `03_analysis/17_manuscript_numbers.R`, which writes `05_manuscripts/manuscript_claim_ledger.csv` from this run.
+
+**Headline results**:
+
+| Item | Result |
+|---|---|
+| Predictors | 18 |
+| Ensemble OOF performance | AUC 0.946, TSS 0.797, threshold 0.134 |
+| Present habitat | 5,781 km² (17.5% of a 33,013 km² domain); 38.4% inside PAs + BCs |
+| Core refugia (60/60) | 3,428 km²; 44.9% inside PAs |
+| GCM-mean change | +8.7% to +34.0%, driven by ACCESS-CM2 |
+| Per-projection change | −37% to +98%; 22/60 projections lose habitat |
+| SSP5-8.5 median across GCMs | −3.3% (2021–2050), −9.8% (2071–2100) |
+
+**Open issue**: distance to protected areas ranks highly in RF and BRT. Presences have a median of 0 m (inside PAs), against 1,250 m for absences, which probably reflects survey placement. A sensitivity run without this predictor is recommended before the protected-area overlap is interpreted causally.
+
+---
+
 ## 2026-11-02: Web Mercator shapefiles were mislabelled UTM 45N
 
 **Defect**: `fix_vector_crs.R` infers CRS from coordinate range and labelled every layer with easting ≥ 500 km as EPSG:32645. `road_network.shp` and `Dzongkhag Boundary.shp` hold Web Mercator coordinates (x ≈ 9.88–10.26 × 10⁶ m; ESRI metadata WGS_1984_Web_Mercator_Auxiliary_Sphere). Reprojected as UTM they landed near 154° E. Consequences:
