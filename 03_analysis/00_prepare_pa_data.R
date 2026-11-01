@@ -4,10 +4,10 @@
 #           presence-absence (PA) CSV for Elephas maximus SDM.
 #
 # Inputs  :
-#   01_data_raw/01_occurrences/elephant_presence_absence_by_station.csv
+#   01_data_raw/01_occurrences/Source_Files/elephant_presence_absence_by_station.csv
 #     - One row per camera station; 'elephant_presence' column is already 0/1.
 #
-#   01_data_raw/01_occurrences/Book1.csv
+#   01_data_raw/01_occurrences/Source_Files/Book1.csv
 #     - Wide occasion matrix (columns 1-90 = trap nights); values are elephant
 #       detection counts (0, positive integer, or NA = camera inactive).
 #     - NOTE: 'x' column holds latitude (~26-28°N) and 'y' holds longitude
@@ -29,8 +29,8 @@ suppressPackageStartupMessages({
 repo_root <- "."
 
 occ_dir  <- file.path(repo_root, "01_data_raw", "01_occurrences")
-file1    <- file.path(occ_dir, "elephant_presence_absence_by_station.csv")
-file2    <- file.path(occ_dir, "Book1.csv")
+file1    <- file.path(occ_dir, "Source_Files", "elephant_presence_absence_by_station.csv")
+file2    <- file.path(occ_dir, "Source_Files", "Book1.csv")
 out_file <- file.path(occ_dir, "elephant_PA_combined.csv")
 
 # Rough bounding box for Bhutan + buffer (filters clearly erroneous coords)
