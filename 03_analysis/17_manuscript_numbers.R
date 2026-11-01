@@ -137,6 +137,22 @@ add("present_suitable_extrap_per_projection_median_pct", round(100 * median(ex_h
 add("present_suitable_extrap_per_projection_min_pct", round(100 * min(ex_hab), 1), "%", "extrapolation_*.tif")
 add("present_suitable_extrap_per_projection_max_pct", round(100 * max(ex_hab), 1), "%", "extrapolation_*.tif")
 
+md <- read.csv(d("01_processed_data", "modeling_dataset.csv"))
+# Which climate variables leave the calibration range (SSP5-8.5, 2071-2100)
+st_clim <- md[, c("BIO05", "BIO15")]
+add("bio05_station_max", round(max(st_clim$BIO05, na.rm = TRUE), 1), "degC", "modeling_dataset.csv")
+bio_share <- function(g, b) {
+  f <- Sys.glob(file.path("01_data_raw", "02_rasters", "future", g, "2071_2100", "ssp585", sprintf("*_%s_v1_0.tif", tolower(b))))[1]
+  v <- values(project(rast(f), pres), mat = FALSE)[suit]
+  rg <- range(st_clim[[b]], na.rm = TRUE)
+  100 * mean(v < rg[1] | v > rg[2], na.rm = TRUE)
+}
+gcm_dirs <- c("acces_cm2", "cnrm_cm6_1", "inm_cm5_0", "miroc6", "mpi_esm1_2_lr")
+b05 <- vapply(gcm_dirs, bio_share, numeric(1), b = "BIO05")
+add("bio05_extrap_ssp585_2071_min", round(min(b05)), "%", "future BIO05 vs station range")
+add("bio05_extrap_ssp585_2071_max", round(max(b05)), "%", "future BIO05 vs station range")
+add("bio15_extrap_ssp585_2071_acces_cm2", round(bio_share("acces_cm2", "BIO15")), "%", "future BIO15 vs station range")
+
 # ── Refugia ─────────────────────────────────────────────────────────────────
 chg <- d("05_change_metrics")
 core <- on_grid(file.path(chg, "refugia_core.tif")) == 1
@@ -154,7 +170,6 @@ for (nm in c("core", "high")) {
 ex_core <- vapply(ex_files, function(f) { v <- on_grid(f); mean(v[core] == 1, na.rm = TRUE) }, numeric(1))
 add("refugia_core_extrap_per_projection_median_pct", round(100 * median(ex_core), 1), "%", "refugia x extrapolation")
 elev <- on_grid(d("02_data_intermediate", "elevation_harmonized.tif"))
-md <- read.csv(d("01_processed_data", "modeling_dataset.csv"))
 sv <- project(vect(md, geom = c("longitude", "latitude"), crs = "EPSG:4326"), crs(pres))
 st_elev <- extract(rast(d("02_data_intermediate", "elevation_harmonized.tif")), sv, ID = FALSE)[, 1]
 add("presence_elevation_max_m", round(max(st_elev[md$response == 1], na.rm = TRUE)), "m", "stations x elevation")
