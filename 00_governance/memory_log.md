@@ -4,6 +4,18 @@ Chronological record of key modelling and governance decisions.
 
 ---
 
+## 2026-11-02: Web Mercator shapefiles were mislabelled UTM 45N
+
+**Defect**: `fix_vector_crs.R` infers CRS from coordinate range and labelled every layer with easting ≥ 500 km as EPSG:32645. `road_network.shp` and `Dzongkhag Boundary.shp` hold Web Mercator coordinates (x ≈ 9.88–10.26 × 10⁶ m; ESRI metadata WGS_1984_Web_Mercator_Auxiliary_Sphere). Reprojected as UTM they landed near 154° E. Consequences:
+- distance-to-roads never entered any earlier run; it was reported as "not available in study area";
+- figure and table code patched the Dzongkhag layer with `st_crs <- 3857`.
+
+The script also deleted each `.prj` before re-detecting it, holding the only backup in memory, so a stopped run (RUN_20261102_030254) left `building_footprints.shp` without a `.prj`. It was restored from the file's ESRI metadata (EPSG:3857), and coordinates were confirmed at 88.8–92.1° E.
+
+**Fix**: easting > 5 × 10⁶ m is now classified as EPSG:3857, and a `.prj` is only overwritten after a CRS is inferred. Roads are now a valid candidate predictor, so the retained predictor set and all results may differ from RUN_20261101_235840_b990.
+
+---
+
 ## 2026-11-02: MESS is a diagnostic, not a mask
 
 **Defect**: `09_future_projections.R` set future predictions to NA where MESS < -3. The MESS variables were hard-coded as BIO01/BIO12/BIO15; only BIO15 was retained, so the code fell back to the first three predictors in manifest order. The reference was 5,000 random cells across Bhutan rather than the calibration data. The masked cells then dropped out of the habitat-area totals and counted as unsuitable in the refugia counts. None of this was stated in the config or the Methods.

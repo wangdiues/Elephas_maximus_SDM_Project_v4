@@ -9,7 +9,8 @@
 #
 # Strategy: coordinate range check:
 #   easting 100K-500K  → DRUKREF 03 (EPSG:5264)
-#   easting 500K+      → UTM Zone 45N (EPSG:32645)
+#   easting 500K-5M    → UTM Zone 45N (EPSG:32645)
+#   easting > 5M       → Web Mercator (EPSG:3857)
 #   max(abs(x)) <= 360 → WGS84 (EPSG:4326)
 
 suppressPackageStartupMessages({ library(sf) })
@@ -18,6 +19,7 @@ suppressPackageStartupMessages({ library(sf) })
 .ESRI_WKT <- list()
 .ESRI_WKT[["5264"]] <- 'PROJCS["DRUKREF_03_Bhutan_National_Grid",GEOGCS["GCS_DRUKREF_03",DATUM["Bhutan_National_Geodetic_Datum",SPHEROID["GRS_1980",6378137.0,298.257222101]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Transverse_Mercator"],PARAMETER["False_Easting",250000.0],PARAMETER["False_Northing",0.0],PARAMETER["Central_Meridian",90.0],PARAMETER["Scale_Factor",1.0],PARAMETER["Latitude_Of_Origin",0.0],UNIT["Meter",1.0]]'
 .ESRI_WKT[["32645"]] <- 'PROJCS["WGS_1984_UTM_Zone_45N",GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Transverse_Mercator"],PARAMETER["False_Easting",500000.0],PARAMETER["False_Northing",0.0],PARAMETER["Central_Meridian",87.0],PARAMETER["Scale_Factor",0.9996],PARAMETER["Latitude_Of_Origin",0.0],UNIT["Meter",1.0]]'
+.ESRI_WKT[["3857"]] <- 'PROJCS["WGS_1984_Web_Mercator_Auxiliary_Sphere",GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Mercator_Auxiliary_Sphere"],PARAMETER["False_Easting",0.0],PARAMETER["False_Northing",0.0],PARAMETER["Central_Meridian",0.0],PARAMETER["Standard_Parallel_1",0.0],PARAMETER["Auxiliary_Sphere_Type",0.0],UNIT["Meter",1.0]]'
 .ESRI_WKT[["4326"]] <- 'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]'
 
 fix_vector_crs <- function(shapefiles_root = "01_data_raw/03_vector/shapefiles") {
@@ -35,12 +37,10 @@ fix_vector_crs <- function(shapefiles_root = "01_data_raw/03_vector/shapefiles")
     prj_path <- sub("\\.shp$", ".prj", shp, ignore.case = TRUE)
 
     result <- tryCatch({
-      # Back up existing .prj before removing (restore on failure)
-      prj_backup <- NULL
-      if (file.exists(prj_path)) {
-        prj_backup <- readLines(prj_path, warn = FALSE)
-        file.remove(prj_path)
-      }
+      # The existing .prj is never removed: it is only overwritten once a CRS
+      # has been inferred, so an interrupted run cannot leave a shapefile
+      # without one.
+      prj_backup <- if (file.exists(prj_path)) readLines(prj_path, warn = FALSE) else NULL
 
       sf_obj <- sf::st_read(shp, quiet = TRUE)
       coords <- sf::st_coordinates(sf::st_geometry(sf_obj))
@@ -55,6 +55,8 @@ fix_vector_crs <- function(shapefiles_root = "01_data_raw/03_vector/shapefiles")
       x_max <- max(abs(coords[, 1]), na.rm = TRUE)
       if (x_max <= 360) {
         epsg <- "4326"
+      } else if (x_max > 5e6) {
+        epsg <- "3857"
       } else if (x_max < 500000) {
         # Easting < 500K → DRUKREF 03 (false easting 250000, lon_0=90)
         epsg <- "5264"
