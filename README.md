@@ -20,13 +20,13 @@ reviewing size, licensing, and species-location sensitivity constraints.
 ### Key Features
 
 - **14-Phase Analytics Pipeline** orchestrated by `run_pipeline.R`
-- **4-Algorithm Ensemble**: GLM, Random Forest, BRT, MaxEnt (AUC-weighted)
+- **Governed Ensemble**: equal weights among algorithms with complete spatial OOF predictions that pass prespecified quality gates; MaxEnt is currently sensitivity-only pending valid spatial OOF predictions
 - **CMIP6 Future Projections**: 8 GCMs x 4 SSPs x 3 time periods = 96 scenarios
 - **Uncertainty Quantification**: GCM SD, algorithm SD, combined, agreement maps
 - **Spatial Cross-Validation**: 15 km block CV with 5 folds
 - **MESS Extrapolation Diagnostics** for all future scenarios
 - **Evaluation Metrics**: AUC, TSS, Boyce continuous index, Brier score, calibration slope, Moran's I
-- **Conservation Overlays**: PA analysis, conflict zones, proximity to infrastructure
+- **Conservation Overlays**: protected-area analysis and a clearly labelled potential interaction-exposure index
 - **ODMAP-Compliant Documentation**
 - **Docker + CI/CD** (GitHub Actions)
 
@@ -64,11 +64,14 @@ Elephas_maximus_SDM_Project_v4/
 │   ├── 08_model_evaluation.R
 │   ├── 09_future_projections.R
 │   ├── 10_change_metrics.R
+│   ├── 10_refugia.R
 │   ├── 10_figures.R
+│   ├── 15_submission_validation.R
+│   ├── 16_submission_figures.R
 │   ├── 11_uncertainty.R
 │   ├── 12_conservation_overlays.R
 │   └── 13_synthesis_reporting.R
-├── 04_outputs/             # Run outputs live directly here as RUN_<timestamp>_<hash>/
+├── 04_outputs/runs/        # Immutable RUN_<timestamp>_<hash>/ production directories
 ├── 06_logs/                # pipeline.log, errors.log, warnings.log
 ├── tests/testthat/         # Unit + integration tests
 ├── Dockerfile
@@ -85,12 +88,16 @@ Elephas_maximus_SDM_Project_v4/
 - R >= 4.3 with packages: `terra`, `sf`, `yaml`, `ggplot2`, `viridis`, `ranger`, `maxnet`, `gbm`, `rlang`
 - On Windows, run via PowerShell (not MSYS2 bash) to avoid `ggsave()` segfaults
 
+## Installation
+
 ### Install Dependencies
 
 ```r
 # From R console:
 source("03_analysis/setup.R")
 ```
+
+## Usage
 
 ### Run Pipeline
 
@@ -136,12 +143,12 @@ docker run -v ${PWD}:/app elephas-sdm:2.1
 | 4     | Background Sampling | Bias-corrected background point generation |
 | 5     | Spatial CV | 15 km block assignment, 5-fold spatial cross-validation |
 | 6     | Predictor Engine | Distance rasters, collinearity diagnostics, predictor selection |
-| 7     | Model Training | GLM + RF + BRT + MaxEnt with 5-fold CV; ensemble prediction |
+| 7     | Model Training | GLM + RF + BRT candidates; MaxEnt sensitivity model; spatial-OOF quality-gated equal-weight ensemble |
 | 8     | Model Evaluation | AUC, TSS, Boyce, Brier, calibration slope, Moran's I |
 | 9     | Future Projections | CMIP6 multi-GCM projections with MESS diagnostics (optional) |
 | 10    | Change Metrics | Delta suitability, gain/loss/persistence maps |
 | 11    | Uncertainty | GCM SD, algorithm SD, combined uncertainty, agreement maps |
-| 12    | Conservation Overlays | PA analysis, conflict zones, proximity indicators |
+| 12    | Conservation Overlays | PA analysis and potential interaction-exposure indicators |
 | 13    | Figures + Reports | 13 publication figures, ODMAP summary, management brief |
 
 ---

@@ -10,7 +10,7 @@
 # A6:  Limiting Factor Maps
 # A7:  Climate Velocity
 # A8:  Threshold Sensitivity Analysis
-# A9:  Human Pressure & Conflict Risk
+# A9:  Human Pressure & Potential Interaction Exposure
 # A10: SHAP Local Feature Importance (RF)
 # =============================================================================
 suppressPackageStartupMessages({
@@ -199,7 +199,7 @@ tryCatch({
 
     fig_a1 <- p_ref / p_hist + plot_layout(heights = c(3, 1))
     fig_a1 <- fig_a1 + plot_annotation(
-      caption = sprintf("Blue = core refugia (stable across >80%% of scenarios) | Score = proportion of %d scenarios where suitability \u2265 %.3f\nCRS: EPSG:32645 | Core refugia cover %.1f%% of Bhutan",
+      caption = sprintf("Blue = core refugia (stable across all %d individual GCM projections) | Score = proportion of projections where suitability \u2265 %.3f\nCRS: EPSG:32645 | Core refugia cover %.1f%% of the mapped modelling area",
                         length(binary_list), THRESHOLD,
                         mean(df_ref$value >= 0.8, na.rm = TRUE) * 100),
       theme = theme(plot.caption = element_text(size = 7.5, colour = "grey40", hjust = 0))
@@ -1114,7 +1114,7 @@ tryCatch({
 # Conflict risk = suitability × human pressure (footprint + proximity to settlements)
 # Present + future (SSP585 2071-2100)
 # =============================================================================
-cat("A9: Human Pressure & Conflict Risk...\n")
+cat("A9: Human Pressure & Potential Interaction Exposure...\n")
 tryCatch({
   # Human footprint raster
   hfp_path  <- file.path(RUN, "02_data_intermediate/human_footprint_harmonized.tif")
@@ -1181,9 +1181,9 @@ tryCatch({
                   aes(x = x, y = y, fill = risk)) +
       add_aoi() +
       scale_fill_manual(values = risk_cols, na.value = "white",
-                        name = "Conflict\nRisk") +
+                        name = "Potential\nexposure") +
       coord_sf(crs = 32645, xlim = XLIM, ylim = YLIM, expand = FALSE) +
-      labs(title = "Present-day conflict risk") +
+      labs(title = "Present-day potential interaction exposure") +
       map_theme + theme(plot.title = element_text(size = 10, face = "bold"))
 
     # Future map
@@ -1198,13 +1198,13 @@ tryCatch({
         geom_raster(data = df_fcc[!is.na(df_fcc$risk), ],
                     aes(x = x, y = y, fill = risk)) +
         add_aoi() +
-        scale_fill_manual(values = risk_cols, na.value = "white", name = "Conflict\nRisk") +
+        scale_fill_manual(values = risk_cols, na.value = "white", name = "Potential\nexposure") +
         coord_sf(crs = 32645, xlim = XLIM, ylim = YLIM, expand = FALSE) +
-        labs(title = "SSP5-8.5 | 2071\u20132100 conflict risk") +
+        labs(title = "SSP5-8.5 | 2071\u20132100 potential interaction exposure") +
         map_theme + theme(plot.title = element_text(size = 10, face = "bold"))
     } else patchwork::plot_spacer()
 
-    # Change in conflict risk
+    # Change in potential interaction exposure
     p_delta_conf <- if (!is.null(fut_conflict_r)) {
       delta_conf <- fut_conflict_r - conflict_r
       df_dc <- r2df(delta_conf)
@@ -1216,12 +1216,12 @@ tryCatch({
           colours = c("#053061","#4393c3","#f7f7f7","#f4a582","#67001f"),
           values  = rescale(c(-lim_dc, -lim_dc/2, 0, lim_dc/2, lim_dc)),
           limits  = c(-lim_dc, lim_dc), oob = squish, na.value = "white",
-          name    = "\u0394 Conflict\nRisk",
+          name    = "\u0394 potential\nexposure",
           guide   = guide_colorbar(barwidth=0.5, barheight=4, title.position="top",
                                    title.hjust=0.5, label.theme=element_text(size=6))
         ) +
         coord_sf(crs = 32645, xlim = XLIM, ylim = YLIM, expand = FALSE) +
-        labs(title = "Change in conflict risk (SSP5-8.5 2071\u20132100 vs present)") +
+        labs(title = "Change in potential interaction exposure (SSP5-8.5 2071\u20132100 vs present)") +
         map_theme + theme(plot.title = element_text(size = 10, face = "bold"))
     } else patchwork::plot_spacer()
 
@@ -1231,20 +1231,20 @@ tryCatch({
       mutate(pct = n / sum(n) * 100,
              area_km2 = n * (250^2) / 1e6) %>%
       filter(!is.na(risk))
-    cat("  Conflict risk areas (present):\n")
+    cat("  Potential interaction-exposure areas (present):\n")
     print(area_stats, row.names = FALSE)
-    write.csv(area_stats, file.path(ADOUT, "A9_conflict_risk_stats.csv"), row.names = FALSE)
+    write.csv(area_stats, file.path(ADOUT, "A9_interaction_exposure_stats.csv"), row.names = FALSE)
 
     fig_a9 <- (p_conf_map | p_fut_conf | p_delta_conf)
     fig_a9 <- fig_a9 + plot_annotation(
-      title    = expression(paste("Human\u2013Elephant Conflict Risk — ", italic("Elephas maximus"), " | Bhutan")),
-      subtitle = "Risk = normalised suitability \u00d7 human pressure (footprint + settlement proximity)",
-      caption  = "High risk = suitable habitat adjacent to high human activity | CRS: EPSG:32645",
+      title    = expression(paste("Potential Human\u2013Elephant Interaction Exposure — ", italic("Elephas maximus"), " | Bhutan")),
+      subtitle = "Descriptive index combining normalised suitability and human pressure; not a fitted conflict model",
+      caption  = "Higher values indicate spatial co-occurrence of suitable habitat and human pressure | CRS: EPSG:32645",
       theme = theme(plot.title    = element_text(size = 13, face = "bold", hjust = 0.5),
                     plot.subtitle = element_text(size = 9,  hjust = 0.5,  colour = "grey35"),
                     plot.caption  = element_text(size = 7.5, colour = "grey50", hjust = 1))
     )
-    ggsave(file.path(ADOUT, "A9_conflict_risk.png"), fig_a9,
+    ggsave(file.path(ADOUT, "A9_interaction_exposure.png"), fig_a9,
            width = 20, height = 9, dpi = 300, limitsize = FALSE)
     cat("  + A9 saved\n")
   }

@@ -256,7 +256,7 @@ tryCatch({
       colours = c("#ffffcc","#fecc5c","#fd8d3c","#e31a1c","#800026"),
       limits  = c(0,1), breaks = c(0,0.25,0.5,0.75,1),
       labels  = c("Low","","Moderate","","Very High"),
-      na.value= "grey88", name = "Conflict\nRisk",
+      na.value= "grey88", name = "Potential\nexposure",
       guide   = guide_colorbar(barwidth=unit(0.45,"cm"), barheight=unit(5,"cm"))) +
     geom_sf(data = dz_utm, inherit.aes = FALSE,
             fill = NA, colour = "grey40", linewidth = 0.22, linetype = "dashed") +
@@ -271,7 +271,7 @@ tryCatch({
                               guide = guide_legend(override.aes = list(size=3, fill=NA))),
           scale_shape_manual(values = hwc_shp, name = "HWC incident")
         ) } +
-    labs(title = "Present-day human-elephant conflict risk \u2014 Elephas maximus (Bhutan)",
+    labs(title = "Present-day potential interaction exposure \u2014 Elephas maximus (Bhutan)",
          x = NULL, y = NULL) +
     map_theme() +
     coord_sf(xlim = bbox$xlim, ylim = bbox$ylim, expand = FALSE, crs = st_crs(32645L))

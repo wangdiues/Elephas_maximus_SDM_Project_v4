@@ -323,7 +323,7 @@ test_that("progress_tracker.md has phase table", {
 # =============================================================================
 # TEST: Compliance Scorecard
 # =============================================================================
-test_that("Governance shows 100% compliance", {
+test_that("Governance contains a complete compliance scorecard", {
   governance_file <- "00_governance/governance.md"
   
   if (!file.exists(governance_file)) {
@@ -332,13 +332,10 @@ test_that("Governance shows 100% compliance", {
   
   content <- paste(readLines(governance_file), collapse = "\n")
   
-  # Check for 100% or 17/17 compliance
-  has_100_percent <- grepl("100%", content) || grepl("17/17", content)
-  
-  expect_true(
-    has_100_percent,
-    info = "Governance compliance not at 100%"
-  )
+  expect_true(grepl("Compliance Scorecard", content),
+              info = "Governance compliance scorecard missing")
+  expect_true(grepl("Reproducibility", content) && grepl("Audit trail", content),
+              info = "Governance scorecard does not cover all declared principles")
 })
 
 # =============================================================================

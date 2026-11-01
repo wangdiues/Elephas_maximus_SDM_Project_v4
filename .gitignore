@@ -40,3 +40,5 @@ renv/staging/
 pipeline_live.log
 pipeline_run_output*
 rerun_clip_figures.out
+
+07_references/

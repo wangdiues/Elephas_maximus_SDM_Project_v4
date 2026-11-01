@@ -1,15 +1,24 @@
-# Run publication figures generation
-# Usage: .\run_pub_figures.ps1
-# Must be run AFTER Phase 9 completes for all 8 GCMs
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$RunDir,
+    [string]$Config = "00_governance/config.yaml"
+)
 
-$RScript = "C:\Program Files\R\R-4.4.0\bin\Rscript.exe"
-$Script  = "E:\Elephas_maximus_SDM_Project_v4\03_analysis\pub_figures.R"
-$Log     = "E:\Elephas_maximus_SDM_Project_v4\06_logs\pub_figures.log"
-$ErrLog  = "E:\Elephas_maximus_SDM_Project_v4\06_logs\pub_figures_err.log"
+$ErrorActionPreference = "Stop"
+$RepoRoot = (Resolve-Path -LiteralPath $PSScriptRoot).Path
+$ResolvedRun = (Resolve-Path -LiteralPath $RunDir).Path
+if (-not $ResolvedRun.StartsWith((Join-Path $RepoRoot "04_outputs\runs"), [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "RunDir must be an immutable directory below 04_outputs/runs"
+}
+$RScript = (Get-Command Rscript -ErrorAction Stop).Source
+$Script = Join-Path $RepoRoot "03_analysis\16_submission_figures.R"
+$ConfigPath = Join-Path $RepoRoot $Config
 
-Write-Host "Starting publication figures generation..."
-Write-Host "Log: $Log"
-
-& $RScript $Script 2>$ErrLog | Tee-Object -FilePath $Log
-
-Write-Host "Done. Check $Log for output."
+Push-Location $RepoRoot
+try {
+    & $RScript $Script $ResolvedRun $ConfigPath
+    if ($LASTEXITCODE -ne 0) { throw "Submission figure generation failed with exit code $LASTEXITCODE" }
+}
+finally {
+    Pop-Location
+}

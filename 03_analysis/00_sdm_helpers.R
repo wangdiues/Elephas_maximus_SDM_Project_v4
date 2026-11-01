@@ -176,10 +176,10 @@ calculate_mess <- function(reference, target, template = NULL) {
       if (!is.finite(sd_j) || sd_j == 0) sd_j <- 1
       if (target_vals[j] < ref_min[j]) {
         # Below reference range
-        diffs[j] <- (target_vals[j] - ref_mean[j]) / sd_j
+        diffs[j] <- (target_vals[j] - ref_min[j]) / sd_j
       } else if (target_vals[j] > ref_max[j]) {
         # Above reference range
-        diffs[j] <- (target_vals[j] - ref_mean[j]) / sd_j
+        diffs[j] <- (ref_max[j] - target_vals[j]) / sd_j
       } else {
         # Within reference range - most similar
         diffs[j] <- 0
@@ -475,18 +475,43 @@ create_spatial_blocks <- function(data, block_size_km = 15, k_folds = 5, seed = 
   block_y <- findInterval(coords[, 2], y_breaks, all.inside = TRUE, rightmost.closed = TRUE)
   block_id <- (block_y - 1) * n_blocks_x + block_x
   
-  # Assign blocks to folds
-  unique_blocks <- unique(block_id)
+  # Assign whole blocks to folds with a deterministic greedy balance on
+  # presence count first and total records second. Sampling blocks with
+  # replacement can leave folds empty and is not a valid spatial partition.
+  unique_blocks <- sort(unique(block_id))
+  if (length(unique_blocks) < k_folds) {
+    stop(sprintf("Only %d occupied spatial blocks are available for %d folds; increase resolution or reduce k",
+                 length(unique_blocks), k_folds))
+  }
+  is_presence <- if ("type" %in% names(data)) data$type == "presence" else rep(TRUE, nrow(data))
+  block_stats <- data.frame(
+    block_id = unique_blocks,
+    n_presence = vapply(unique_blocks, function(z) sum(block_id == z & is_presence), integer(1)),
+    n_total = vapply(unique_blocks, function(z) sum(block_id == z), integer(1))
+  )
   set.seed(seed)
-  block_folds <- sample(1:k_folds, length(unique_blocks), replace = TRUE)
-  names(block_folds) <- unique_blocks
+  block_stats$tie <- runif(nrow(block_stats))
+  block_stats <- block_stats[order(-block_stats$n_presence, -block_stats$n_total, block_stats$tie), ]
+  fold_presence <- integer(k_folds)
+  fold_total <- integer(k_folds)
+  block_folds <- integer(nrow(block_stats))
+  names(block_folds) <- as.character(block_stats$block_id)
+  for (i in seq_len(nrow(block_stats))) {
+    candidate <- which(fold_presence == min(fold_presence))
+    candidate <- candidate[fold_total[candidate] == min(fold_total[candidate])]
+    chosen <- candidate[[1]]
+    block_folds[as.character(block_stats$block_id[i])] <- chosen
+    fold_presence[chosen] <- fold_presence[chosen] + block_stats$n_presence[i]
+    fold_total[chosen] <- fold_total[chosen] + block_stats$n_total[i]
+  }
   
   # Map back to points
   folds <- as.integer(block_folds[as.character(block_id)])
-  na_idx <- which(!is.finite(folds))
-  if (length(na_idx) > 0) {
-    folds[na_idx] <- sample(seq_len(k_folds), length(na_idx), replace = TRUE)
-  }
+  if (any(!is.finite(folds))) stop("Spatial fold assignment produced missing fold IDs")
+  attr(folds, "block_id") <- block_id
+  attr(folds, "x_breaks") <- x_breaks
+  attr(folds, "y_breaks") <- y_breaks
+  attr(folds, "crs") <- st_crs(pts_proj)
   return(folds)
 }
 

@@ -362,14 +362,15 @@ test_that("create_spatial_blocks produces different folds with different seeds",
   expect_false(all(folds1 == folds2))
 })
 
-test_that("create_spatial_blocks handles minimal data (2 points)", {
+test_that("create_spatial_blocks rejects fewer occupied blocks than folds", {
   df <- data.frame(
     longitude = c(90.0, 90.1),
     latitude = c(27.0, 27.1)
   )
-  folds <- create_spatial_blocks(df, k_folds = 2, seed = 42)
-  expect_length(folds, 2)
-  expect_true(all(folds %in% 1:2))
+  expect_error(
+    create_spatial_blocks(df, k_folds = 2, seed = 42),
+    "occupied spatial blocks"
+  )
 })
 
 # =============================================================================

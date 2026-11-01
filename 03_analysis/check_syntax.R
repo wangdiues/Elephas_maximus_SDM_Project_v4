@@ -1,3 +1,4 @@
+# Parse-check one or more R scripts without executing the analysis.
 script_file <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
 if (length(script_file) == 0) {
   frame_files <- vapply(sys.frames(), function(env) if (is.null(env$ofile)) "" else as.character(env$ofile), character(1))

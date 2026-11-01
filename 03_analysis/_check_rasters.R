@@ -1,3 +1,4 @@
+# Diagnostic utility: inspect raster availability and geometry.
 library(terra)
 library(sf)
 

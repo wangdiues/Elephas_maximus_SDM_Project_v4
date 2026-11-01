@@ -1,3 +1,4 @@
+# Diagnostic utility: inspect raster and vector coordinate systems.
 library(terra)
 library(sf)
 

@@ -13,9 +13,9 @@ Study area: Bhutan (national)
 | Taxon | *Elephas maximus* (Asian elephant) |
 | Study area | Bhutan (national) |
 | Modelling objective | Potential habitat suitability mapping; conservation planning |
-| SDM algorithms | GLM, Random Forest, BRT (GBM), MaxEnt (maxnet) |
-| Ensemble method | Weighted mean by AUC; algorithms below quality gates excluded |
-| Projection period | Present (1986–2015) + future (2041–2060, 2061–2080, 2081–2100) |
+| SDM algorithms | GLM, Random Forest, BRT (GBM); MaxEnt sensitivity-only pending valid spatial out-of-fold predictions |
+| Ensemble method | Equal-weight mean among eligible algorithms with complete spatial out-of-fold predictions; minimum two members |
+| Projection period | Present (1986–2015) + future (2021–2050, 2051–2080, 2071–2100) |
 | Future scenarios | CMIP6 SSP1-2.6, SSP2-4.5, SSP3-7.0, SSP5-8.5 × 8 GCMs |
 
 ---
@@ -69,9 +69,11 @@ Study area: Bhutan (national)
 - Block size: determined by spatial autocorrelation range
 
 ### Ensemble
-- Method: weighted mean (AUC weights)
-- Inclusion: algorithm must pass all FATAL quality gates (AUC ≥ 0.65, calibration slope 0.5–2.0)
+- Method: equal-weight mean among eligible algorithms
+- Inclusion: complete bounded spatial out-of-fold predictions and prespecified AUC ≥ 0.65 and TSS ≥ 0.30 gates
 - Minimum members: 2
+- Threshold: TSS-optimal threshold from the spatial out-of-fold ensemble predictions
+- MaxEnt: sensitivity-only unless genuine spatial out-of-fold predictions are implemented and pass the same gates
 
 ---
 

@@ -25,7 +25,7 @@
 #   T19  table_19_predictor_statistics.csv  — Predictor mean/SD at presence vs background
 #   T20  table_20_algorithm_hyperparams.csv — Model hyperparameters and settings
 #   T21  table_21_gcm_trajectories.csv      — % suitable per GCM × SSP × period
-#   T22  table_22_conflict_risk_zones.csv   — Present-day conflict risk class areas
+#   T22  table_22_interaction_exposure_zones.csv — Descriptive exposure classes
 #   T23  table_23_refugia_summary.csv       — Refugia area stats (populated after refugia built)
 #   T24  table_24_dzongkhag_suitability.csv — Per-Dzongkhag habitat area, %, mean suitability
 #
@@ -37,6 +37,9 @@ suppressPackageStartupMessages({
   library(terra)
   library(sf)
 })
+if (!exists("interaction_exposure_index", mode = "function")) {
+  source(file.path("03_analysis", "00_publication_helpers.R"))
+}
 
 generate_publication_tables <- function(run_dir, config_path = NULL) {
   run_dir  <- normalizePath(run_dir, winslash = "/", mustWork = TRUE)
@@ -59,15 +62,19 @@ generate_publication_tables <- function(run_dir, config_path = NULL) {
 
   # ── Shared helpers ──────────────────────────────────────────────────────────
 
-  # TSS-optimal threshold (mean across algorithms, excluding ensemble)
-  threshold <- 0.5
+  # The only primary classification threshold is the spatial-OOF ensemble
+  # TSS optimum. Averaging algorithm-specific thresholds is not meaningful.
+  threshold <- NA_real_
   eval_csv  <- file.path(mod_dir, "evaluation_all.csv")
   eval_df   <- tryCatch(read.csv(eval_csv), error = function(e) NULL)
   if (!is.null(eval_df) && "threshold" %in% names(eval_df)) {
-    non_ens <- eval_df[eval_df$algorithm != "ensemble", ]
-    tv      <- mean(non_ens$threshold, na.rm = TRUE)
-    if (is.finite(tv)) threshold <- tv
+    ens <- eval_df[eval_df$algorithm == "ensemble", , drop = FALSE]
+    if (nrow(ens) != 1 || !is.finite(ens$threshold[[1]])) {
+      stop("Exactly one finite spatial-OOF ensemble threshold is required")
+    }
+    threshold <- ens$threshold[[1]]
   }
+  if (!is.finite(threshold)) stop("Spatial-OOF ensemble threshold is unavailable")
 
   # SSP label lookup
   ssp_lbl <- c(
@@ -115,21 +122,37 @@ generate_publication_tables <- function(run_dir, config_path = NULL) {
   # ── T01: Model Performance ──────────────────────────────────────────────────
   tryCatch({
     ms <- read.csv(file.path(mod_dir, "metrics_summary.csv"))
+    contract <- read.csv(file.path(mod_dir, "ensemble_contract.csv"), stringsAsFactors = FALSE)
+    keep <- c(contract$algorithm[contract$included], "ensemble")
+    ms <- ms[ms$algorithm %in% keep, , drop = FALSE]
+    folds <- read.csv(file.path(mod_dir, "fold_metrics.csv"), stringsAsFactors = FALSE)
+    fold_summary <- aggregate(cbind(auc, tss, brier) ~ algorithm, folds,
+                              function(z) c(mean = mean(z), sd = stats::sd(z)))
+    unpack <- function(x, metric) {
+      m <- do.call(rbind, x)
+      data.frame(algorithm = fold_summary$algorithm,
+                 setNames(list(m[, "mean"]), paste0(metric, "_fold_mean")),
+                 setNames(list(m[, "sd"]), paste0(metric, "_fold_sd")),
+                 check.names = FALSE)
+    }
+    fs <- Reduce(function(x, y) merge(x, y, by = "algorithm", all = TRUE),
+                 list(unpack(fold_summary$auc, "auc"),
+                      unpack(fold_summary$tss, "tss"),
+                      unpack(fold_summary$brier, "brier")))
+    t1 <- merge(ms, fs, by = "algorithm", all.x = TRUE)
     t1 <- data.frame(
-      Algorithm           = toupper(ms$algorithm),
-      AUC                 = round(ms$auc,               3),
-      TSS                 = round(ms$tss,               3),
-      Boyce_Index         = round(ms$boyce,             3),
-      Brier_Score         = round(ms$brier,             3),
-      Calibration_Slope   = round(ms$calibration_slope, 3),
-      Morans_I            = round(ms$moran_i,           3),
-      Optimal_Threshold   = round(ms$threshold,         4),
-      TSS_note            = ifelse(is.na(ms$tss),
-        "TSS not computed (MaxEnt OOF probabilities not in standard range)", ""),
-      check.names = FALSE, stringsAsFactors = FALSE
+      Algorithm = toupper(t1$algorithm),
+      AUC_fold_mean = round(t1$auc_fold_mean, 3),
+      AUC_fold_SD = round(t1$auc_fold_sd, 3),
+      TSS_fold_mean = round(t1$tss_fold_mean, 3),
+      TSS_fold_SD = round(t1$tss_fold_sd, 3),
+      Brier_fold_mean = round(t1$brier_fold_mean, 3),
+      Brier_fold_SD = round(t1$brier_fold_sd, 3),
+      Calibration_slope = round(t1$calibration_slope, 3),
+      Morans_I = round(t1$moran_i, 3),
+      OOF_threshold = round(t1$threshold, 4),
+      stringsAsFactors = FALSE, check.names = FALSE
     )
-    # Remove note column if empty for all rows
-    if (all(t1$TSS_note == "")) t1$TSS_note <- NULL
     write.csv(t1, file.path(fig_dir, "table_01_model_performance.csv"), row.names = FALSE)
     cat("  + table_01_model_performance.csv\n"); n <- n + 1L
   }, error = function(e) cat(sprintf("  T01 failed: %s\n", e$message)))
@@ -767,18 +790,18 @@ generate_publication_tables <- function(run_dir, config_path = NULL) {
       Algorithm = c("GLM", "Random Forest", "BRT", "MaxEnt"),
       Package   = c("stats", "ranger", "gbm", "maxent.jar"),
       Key_parameters = c(
-        "family = binomial, link = logit; forward stepwise selection by AIC",
+        "family = binomial, link = logit; full prespecified main-effects formula",
         sprintf("num.trees = 1000, mtry = %d (floor(sqrt(%d predictors))), min.node.size = 1",
                 mtry, n_pred),
-        "n.trees = 1000, interaction.depth = 3, shrinkage = 0.01, bag.fraction = 0.5; OOB stopping",
-        "betamultiplier = 1.5, features = lqhp (linear, quadratic, hinge, product)"
+        "n.trees = 1000, interaction.depth = 3, shrinkage = 0.01, bag.fraction = 0.75; OOB stopping",
+        "betamultiplier = 1.5; automatic feature selection; cloglog output"
       ),
       Seed_controlled = c("Yes", "Yes", "Yes", "Yes"),
       Notes = c(
         "Spatial fold cross-validation; OOF predictions used for all evaluation",
         "Permutation importance used for variable importance",
         "Best iteration selected by OOB; relative influence for variable importance",
-        "Regularization beta=1.5 chosen for small sample size (n=252 presences)"
+        "Sensitivity product only; excluded from the primary ensemble until complete spatial OOF predictions exist"
       ),
       stringsAsFactors = FALSE
     )
@@ -801,7 +824,7 @@ generate_publication_tables <- function(run_dir, config_path = NULL) {
     cat(sprintf("  + table_21_gcm_trajectories.csv (%d rows)\n", nrow(t21))); n <- n + 1L
   }, error = function(e) cat(sprintf("  T21 failed: %s\n", e$message)))
 
-  # ── T22: Present-Day Conflict Risk Zones ────────────────────────────────────
+  # ── T22: Present potential interaction-exposure zones ───────────────────────
   tryCatch({
     pres_ens  <- file.path(pres_dir, "suitability_present_ensemble.tif")
     hfp_files <- c(
@@ -821,14 +844,9 @@ generate_publication_tables <- function(run_dir, config_path = NULL) {
     if (!isTRUE(compareGeom(suit, hfp, stopOnError = FALSE)))
       hfp <- resample(hfp, suit, method = "bilinear")
 
-    # Normalize both to 0-1
-    s_v   <- as.numeric(values(suit, na.rm = FALSE))
-    h_v   <- as.numeric(values(hfp,  na.rm = FALSE))
-    h_min <- min(h_v, na.rm = TRUE); h_max <- max(h_v, na.rm = TRUE)
-    h_n   <- (h_v - h_min) / max(h_max - h_min, 1e-6)
-
-    # Risk = sqrt(suit × human_pressure) — geometric mean
-    risk    <- sqrt(s_v * h_n)
+    # Descriptive exposure index, not a fitted conflict-risk model.
+    exposure_r <- interaction_exposure_index(suit, hfp)
+    risk    <- as.numeric(values(exposure_r, na.rm = FALSE))
     ok      <- !is.na(risk)
     cell_km2 <- prod(res(suit)) / 1e6
     rm(suit, hfp); gc(verbose = FALSE)
@@ -848,35 +866,25 @@ generate_publication_tables <- function(run_dir, config_path = NULL) {
       lo <- q_breaks[i]; hi <- q_breaks[i + 1]
       in_class <- ok & risk >= lo & (if (i < length(classes)) risk < hi else risk <= hi)
       t22_rows[[i]] <- data.frame(
-        Risk_class  = classes[i],
-        Risk_range  = labels[i],
+        Exposure_class  = classes[i],
+        Exposure_range  = labels[i],
         Area_km2    = round(sum(in_class, na.rm = TRUE) * cell_km2, 0),
         Pct_Bhutan  = round(100 * sum(in_class, na.rm = TRUE) / sum(ok, na.rm = TRUE), 1),
         stringsAsFactors = FALSE
       )
     }
     t22 <- do.call(rbind, t22_rows)
-    write.csv(t22, file.path(fig_dir, "table_22_conflict_risk_zones.csv"), row.names = FALSE)
-    cat("  + table_22_conflict_risk_zones.csv\n"); n <- n + 1L
+    write.csv(t22, file.path(fig_dir, "table_22_interaction_exposure_zones.csv"), row.names = FALSE)
+    cat("  + table_22_interaction_exposure_zones.csv\n"); n <- n + 1L
   }, error = function(e) cat(sprintf("  T22 failed: %s\n", e$message)))
 
   # ── T23: Refugia Summary (stub — populated after 10_figures_refugia.R built) ─
   tryCatch({
-    ref_files <- list.files(pres_dir, "refugia_core\\.tif$", full.names = TRUE)
-    stab_files <- list.files(pres_dir, "refugia_stability\\.tif$", full.names = TRUE)
+    ref_files <- list.files(chg_dir, "refugia_core\\.tif$", full.names = TRUE)
+    stab_files <- list.files(chg_dir, "refugia_stability_count\\.tif$", full.names = TRUE)
 
     if (length(ref_files) == 0 && length(stab_files) == 0) {
-      # Write stub so pipeline doesn't fail silently
-      t23 <- data.frame(
-        Refugia_type  = character(0),
-        Definition    = character(0),
-        Area_km2      = numeric(0),
-        Pct_Bhutan    = numeric(0),
-        Pct_inside_PA = numeric(0),
-        stringsAsFactors = FALSE
-      )
-      write.csv(t23, file.path(fig_dir, "table_23_refugia_summary.csv"), row.names = FALSE)
-      cat("  + table_23_refugia_summary.csv (stub — refugia rasters not yet built)\n")
+      stop("validated refugia rasters are required; empty stub tables are prohibited")
     } else {
       pres_ens  <- file.path(pres_dir, "suitability_present_ensemble.tif")
       suit      <- rast(pres_ens)
@@ -891,9 +899,8 @@ generate_publication_tables <- function(run_dir, config_path = NULL) {
           pa_mask <- rasterize(vect(pa_sf), suit, field = 1, background = 0)
       }
 
-      n_scen <- length(persist_files_t23 <- list.files(
-        file.path(run_dir, "05_change_metrics"),
-        pattern = "^persistence_ensemble_.*\\.tif$", full.names = FALSE))
+      refugia_contract <- read.csv(file.path(chg_dir, "refugia_contract.csv"), stringsAsFactors = FALSE)
+      n_scen <- refugia_contract$denominator_n[[1]]
 
       t23_rows <- list()
 
@@ -909,7 +916,7 @@ generate_publication_tables <- function(run_dir, config_path = NULL) {
         } else NA_real_
         t23_rows[[length(t23_rows) + 1L]] <- data.frame(
           Refugia_type  = "Core refugia",
-          Definition    = sprintf("Suitable in ALL %d future scenarios (4 SSPs x 3 periods)", n_scen),
+          Definition    = sprintf("Present-suitable and retained in all %d individual GCM projections", n_scen),
           Area_km2      = round(n_ref * cell_km2, 0),
           Pct_Bhutan    = round(100 * n_ref / n_total, 1),
           Pct_inside_PA = pa_pct,
@@ -971,11 +978,7 @@ generate_publication_tables <- function(run_dir, config_path = NULL) {
     }, error = function(e) 1e-6)
 
     # TSS-optimal ensemble threshold (from eval table or default)
-    ens_thr <- tryCatch({
-      ev <- read.csv(file.path(mod_dir, "evaluation_all.csv"))
-      tv <- mean(ev$threshold[!is.na(ev$threshold)], na.rm = TRUE)
-      if (is.finite(tv)) tv else 0.5
-    }, error = function(e) 0.5)
+    ens_thr <- get_oof_ensemble_threshold(file.path(mod_dir, "evaluation_all.csv"))
 
     # The shapefile has wrong CRS metadata (labelled 32645 but coords are EPSG:3857)
     dzo_v_raw <- tryCatch(vect(dzo), error = function(e) NULL)
@@ -1036,7 +1039,37 @@ generate_publication_tables <- function(run_dir, config_path = NULL) {
 
   cat(sprintf("\n=== Publication tables complete: %d generated ===\n", n))
   cat(sprintf("Tables written to: %s\n", fig_dir))
-  invisible(list(n_tables = n))
+
+  required_tables <- c(
+    "table_01_model_performance.csv", "table_02_predictor_selection.csv",
+    "table_03_habitat_trajectories.csv", "table_04_pa_coverage.csv",
+    "table_06_gain_loss_persistence.csv", "table_14_occurrence_summary.csv",
+    "table_16_threshold_sensitivity.csv", "table_18_cv_block_details.csv",
+    "table_23_refugia_summary.csv"
+  )
+  missing_tables <- required_tables[!file.exists(file.path(fig_dir, required_tables))]
+  if (length(missing_tables) > 0) stop("Missing required publication tables: ", paste(missing_tables, collapse = ", "))
+  empty_tables <- required_tables[vapply(file.path(fig_dir, required_tables), function(f) {
+    nrow(read.csv(f, stringsAsFactors = FALSE)) == 0
+  }, logical(1))]
+  if (length(empty_tables) > 0) stop("Empty publication tables are prohibited: ", paste(empty_tables, collapse = ", "))
+
+  table_files <- sort(list.files(fig_dir, pattern = "^table_.*\\.csv$", full.names = TRUE))
+  absolute_path_pattern <- "[A-Za-z]:[/\\\\]"
+  leaking <- table_files[vapply(table_files, function(f) {
+    any(grepl(absolute_path_pattern, readLines(f, warn = FALSE)))
+  }, logical(1))]
+  if (length(leaking) > 0) stop("Publication tables contain absolute workstation paths: ",
+                                paste(basename(leaking), collapse = ", "))
+  provenance <- data.frame(
+    run_id = basename(run_dir),
+    table_file = basename(table_files),
+    md5 = unname(tools::md5sum(table_files)),
+    source_run = basename(run_dir),
+    stringsAsFactors = FALSE
+  )
+  write.csv(provenance, file.path(fig_dir, "table_provenance_manifest.csv"), row.names = FALSE)
+  invisible(list(n_tables = length(table_files), manifest = file.path(fig_dir, "table_provenance_manifest.csv")))
 }
 
 # ── entry point ────────────────────────────────────────────────────────────────

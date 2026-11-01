@@ -1,3 +1,4 @@
+# Diagnostic utility: validate configured raster files.
 library(terra)
 
 script_file <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)

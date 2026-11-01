@@ -1,3 +1,4 @@
+# Diagnostic utility for project inputs and spatial objects.
 suppressPackageStartupMessages({ library(terra); library(sf); library(yaml) })
 
 script_file <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)

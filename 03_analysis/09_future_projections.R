@@ -28,6 +28,10 @@ if (!exists("calculate_mess", mode = "function")) {
 # -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------
+`%||%` <- function(x, y) {
+  if (is.null(x) || !length(x) || (is.character(x) && !nzchar(x))) y else x
+}
+
 normalize_bio_name <- function(x) gsub("[^A-Z0-9]", "", toupper(x))
 
 # Turn "bio1", "BIO_01", "BIO01", "BiO-1" -> "BIO01" ... and supports BIO1..BIO19
@@ -73,15 +77,30 @@ sample_stack_matrix <- function(stk, size = 5000) {
 # Main
 # -----------------------------------------------------------------------------
 project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
-                                     gcm_filter = NULL, skip_existing = FALSE) {
+                                     gcm_filter = NULL, skip_existing = FALSE,
+                                     config_path = "00_governance/config.yaml",
+                                     strict = TRUE) {
   proc_dir <- file.path(run_dir, "01_processed_data")
   model_dir <- file.path(run_dir, "02_models")
   out_dir <- file.path(run_dir, "04_future_projections")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   
-  # Load models
+  if (isTRUE(strict) && isTRUE(skip_existing)) {
+    stop("skip_existing=TRUE is prohibited for production future projections")
+  }
+
+  # Load exactly the algorithms locked by the spatial-OOF ensemble contract.
+  contract_file <- file.path(model_dir, "ensemble_contract.csv")
+  if (!file.exists(contract_file)) stop("Missing ensemble contract: ", contract_file)
+  ensemble_contract <- read.csv(contract_file, stringsAsFactors = FALSE)
+  included_algorithms <- ensemble_contract$algorithm[ensemble_contract$included]
+  ensemble_weights <- ensemble_contract$weight[ensemble_contract$included]
+  names(ensemble_weights) <- included_algorithms
+  if (length(included_algorithms) == 0 || any(!is.finite(ensemble_weights)) ||
+      abs(sum(ensemble_weights) - 1) > 1e-8) stop("Invalid ensemble contract")
+
   models <- list()
-  for (algo in c("glm", "rf", "maxent", "brt")) {
+  for (algo in included_algorithms) {
     f <- file.path(model_dir, sprintf("model_%s.rds", algo))
     if (file.exists(f)) models[[algo]] <- readRDS(f)
   }
@@ -95,10 +114,8 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
     if (!isTRUE(compareGeom(msk, r, stopOnError = FALSE))) msk <- project(msk, r, method = "near")
     mask(r, msk, maskvalues = 0)
   }
-  if (length(models) == 0) {
-    cat("No models found\n")
-    return(list(n_scenarios = 0))
-  }
+  missing_models <- setdiff(included_algorithms, names(models))
+  if (length(missing_models) > 0) stop("Missing included model(s): ", paste(missing_models, collapse = ", "))
   
   # Load predictor manifest
   manifest_file <- file.path(proc_dir, "predictor_manifest.csv")
@@ -187,7 +204,30 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
     scenarios <- scenarios[tolower(scenarios$gcm) %in% tolower(gcm_filter), , drop = FALSE]
     cat(sprintf("GCM filter applied: %d scenarios remaining\n", nrow(scenarios)))
   }
+  cfg <- yaml::read_yaml(config_path)
+  expected_n <- as.integer(cfg$climate_projections$expected_gcm_scenarios %||% 96L)
+  canonical_token <- function(x) tolower(gsub("[^A-Za-z0-9]", "", x))
+  expected_gcm_names <- vapply(cfg$climate_projections$gcms_contract, function(g) {
+    alias <- cfg$climate_projections$gcm_aliases[[g]]
+    if (is.null(alias)) g else alias
+  }, character(1))
+  observed_sets_match <- setequal(canonical_token(scenarios$gcm), canonical_token(expected_gcm_names)) &&
+    setequal(canonical_token(scenarios$ssp), canonical_token(cfg$climate_projections$ssps_contract)) &&
+    setequal(canonical_token(scenarios$period), canonical_token(cfg$climate_projections$periods_contract))
+  if (isTRUE(strict) && !observed_sets_match) {
+    stop("Observed GCM, SSP, or period labels do not match the configured scenario contract")
+  }
+  if (isTRUE(strict) && nrow(scenarios) != expected_n) {
+    stop(sprintf("Future scenario contract requires %d GCM-SSP-period combinations; found %d",
+                 expected_n, nrow(scenarios)))
+  }
+  scenarios <- scenarios[order(scenarios$gcm, scenarios$ssp, scenarios$period), , drop = FALSE]
   if (is.finite(max_scenarios)) scenarios <- head(scenarios, max_scenarios)
+  if (isTRUE(strict) && nrow(scenarios) != expected_n) {
+    stop("max_scenarios truncated the production scenario manifest")
+  }
+  write.csv(transform(scenarios, run_id = basename(run_dir)),
+            file.path(out_dir, "expected_scenario_manifest.csv"), row.names = FALSE)
   
   # Logging
   scenario_log <- list()
@@ -287,6 +327,8 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
         reason = paste("Missing predictors:", paste(missing_preds, collapse = ", ")),
         stringsAsFactors = FALSE
       )
+      if (isTRUE(strict)) stop("Missing future predictors for ", s$gcm, "/", s$ssp, "/", s$period,
+                               ": ", paste(missing_preds, collapse = ", "))
       next
     }
 
@@ -312,7 +354,9 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
       values(mess_rast) <- NA_real_
     }
     
-    # Predict for each model
+    # Predict for each model and retain the exact contracted set for the
+    # within-GCM algorithm ensemble.
+    scenario_preds <- list()
     for (algo in names(models)) {
       m <- models[[algo]]
       
@@ -376,6 +420,8 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
 
       # Clip to AOI
       pred <- apply_aoi_mask(pred)
+      if (is.null(pred)) stop("Prediction failed for included algorithm: ", algo)
+      scenario_preds[[algo]] <- pred
 
       out_file <- file.path(
         out_dir,
@@ -383,6 +429,18 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
       )
       ph9_write_raster(pred, out_file, skip_existing = skip_existing)
     }
+
+    if (!identical(sort(names(scenario_preds)), sort(included_algorithms))) {
+      stop("Scenario did not produce the complete contracted algorithm set")
+    }
+    scenario_ensemble <- Reduce(`+`, Map(function(a, w) scenario_preds[[a]] * w,
+                                          included_algorithms,
+                                          ensemble_weights[included_algorithms]))
+    scenario_ensemble_file <- file.path(
+      out_dir,
+      sprintf("suitability_future_%s_%s_%s_ensemble.tif", gcm_tag, ssp_tag, period_tag)
+    )
+    ph9_write_raster(scenario_ensemble, scenario_ensemble_file, skip_existing = skip_existing)
     
     # Save MESS + novelty assessment + extrapolation mask
     mess_file <- file.path(out_dir, sprintf("mess_%s_%s_%s.tif", gcm_tag, ssp_tag, period_tag))
@@ -408,7 +466,7 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
     )
 
     # Memory and connection cleanup between scenarios
-    rm(stk, mess_rast, layers)
+    rm(stk, mess_rast, layers, scenario_preds, scenario_ensemble)
     gc(verbose = FALSE)
     gc(verbose = FALSE)  # second pass ensures finalizers run
     tryCatch(terra::tmpFiles(remove = TRUE), error = function(e) NULL)
@@ -431,7 +489,8 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
   }
   
   # -----------------------------------------------------------------------------
-  # Build per (SSP, period) GCM ensemble maps from all available algorithm outputs.
+  # Build per (SSP, period) GCM summaries from one already-ensembled raster per
+  # GCM. This preserves the algorithm definition used for the present map.
   # -----------------------------------------------------------------------------
   unique_ssp <- unique(scenarios$ssp)
   unique_period <- unique(scenarios$period)
@@ -441,9 +500,14 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
       ssp_tag <- tagify(tolower(ssp))
       period_tag <- tagify(period)
 
-      pats <- sprintf("^suitability_future_.*_%s_%s_(glm|maxent|rf|brt)\\.tif$", ssp_tag, period_tag)
+      pats <- sprintf("^suitability_future_.*_%s_%s_ensemble\\.tif$", ssp_tag, period_tag)
       ff <- list.files(out_dir, pattern = pats, full.names = TRUE)
-      if (length(ff) == 0) next
+      expected_gcms <- length(cfg$climate_projections$gcms_contract %||% character())
+      if (isTRUE(strict) && length(ff) != expected_gcms) {
+        stop(sprintf("Expected %d GCM ensemble rasters for %s %s; found %d",
+                     expected_gcms, ssp, period, length(ff)))
+      }
+      if (length(ff) == 0) stop("No GCM ensemble rasters for ", ssp, " ", period)
 
       tryCatch({
         st <- rast(ff)
@@ -451,9 +515,7 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
         ens_file <- file.path(out_dir, sprintf("future_gcm_ensemble_%s_%s.tif", ssp_tag, period_tag))
         ph9_write_raster(ens, ens_file, skip_existing = skip_existing)
         rm(st, ens); gc(verbose = FALSE)
-      }, error = function(e) {
-        cat(sprintf("  Warning: ensemble TIF skipped for %s_%s: %s\n", ssp, period, conditionMessage(e)))
-      })
+      }, error = function(e) stop("GCM ensemble failed for ", ssp, " ", period, ": ", conditionMessage(e)))
     }
   }
   
@@ -537,6 +599,9 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
   cat(sprintf("GCM completeness report: %s\n", file.path(out_dir, "gcm_completeness_report.csv")))
   cat(sprintf("Extrapolation report: %s\n", file.path(out_dir, "extrapolation_fraction_report.csv")))
 
+  if (isTRUE(strict) && n_done != expected_n) {
+    stop(sprintf("Only %d of %d contracted future scenarios completed", n_done, expected_n))
+  }
   list(n_scenarios = n_done, results = results)
 }
 
@@ -548,6 +613,8 @@ if (sys.nframe() == 0) {
   repo_root <- if (length(args) >= 1) args[[1]] else "."
   run_dir   <- if (length(args) >= 2) args[[2]] else "."
   
-  res <- project_future_with_mess(repo_root, run_dir, max_scenarios = Inf)
+  config_path <- if (length(args) >= 3) args[[3]] else "00_governance/config.yaml"
+  res <- project_future_with_mess(repo_root, run_dir, max_scenarios = Inf,
+                                  config_path = config_path, strict = TRUE)
   cat(sprintf("Phase 9 complete: %d scenarios processed\n", res$n_scenarios))
 }

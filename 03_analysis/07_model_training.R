@@ -14,12 +14,13 @@ if (!exists("auc_score", mode = "function")) {
   source(file.path(src_dir, "00_sdm_helpers.R"))
 }
 
-train_all_models <- function(run_dir, run_id) {
+train_all_models <- function(run_dir, run_id, config_path = "00_governance/config.yaml") {
   proc_dir <- file.path(run_dir, "01_processed_data")
   model_dir <- file.path(run_dir, "02_models")
   suit_dir <- file.path(run_dir, "03_present_suitability")
   dir.create(model_dir, recursive = TRUE)
   dir.create(suit_dir, recursive = TRUE)
+  cfg_raw <- yaml::read_yaml(config_path)
   
   dat <- read.csv(file.path(proc_dir, "modeling_dataset.csv"))
   manifest <- read.csv(file.path(proc_dir, "predictor_manifest.csv"))
@@ -33,8 +34,11 @@ train_all_models <- function(run_dir, run_id) {
   
   formula <- as.formula(paste("response ~", paste(pred_cols, collapse = " + ")))
   folds <- sort(unique(dat$fold[!is.na(dat$fold)]))
-  if (length(folds) < 2) folds <- 1:5
-  dat$fold <- ifelse(is.na(dat$fold), sample(folds, nrow(dat), replace = TRUE), dat$fold)
+  if (anyNA(dat$fold)) stop("modeling_dataset.csv contains missing spatial fold assignments")
+  expected_folds <- as.integer(cfg_raw$spatial_cv$k_folds %||% 5L)
+  if (!identical(as.integer(folds), seq_len(expected_folds))) {
+    stop("modeling_dataset.csv does not contain the complete configured spatial fold set")
+  }
   
   results <- list()
   
@@ -112,9 +116,8 @@ train_all_models <- function(run_dir, run_id) {
     results$brt <- list(auc = mean(brt_cv$auc, na.rm = TRUE), tss = mean(brt_cv$tss, na.rm = TRUE))
   }
 
-  # MaxEnt (official jar — better features: lqhp, better regularization)
+  # MaxEnt sensitivity model (official jar; automatic features, beta = 1.5).
   cat("Training MaxEnt (jar)...\n")
-  cfg_raw       <- tryCatch(yaml::read_yaml(if (exists("config_path")) config_path else "00_governance/config.yaml"), error = function(e) list())
   maxent_jar_path <- if (!is.null(cfg_raw$tools$maxent_jar)) {
     rr <- if (exists("repo_root")) repo_root else "."
     normalizePath(file.path(rr, cfg_raw$tools$maxent_jar), winslash = "/", mustWork = FALSE)
@@ -238,55 +241,11 @@ train_all_models <- function(run_dir, run_id) {
       }
     }
 
-    # OOF predictions for MaxEnt:
-    #   Presences — true held-out predictions from CV samplePredictions CSVs (unbiased)
-    #   Absences  — full-model raster predictions (best available proxy)
-    if (!is.null(mx_jar_raster)) {
-      # Initialize all points from full-model raster (covers absences + presence fallback)
-      pts_all <- vect(dat[, c("longitude", "latitude")],
-                      geom = c("longitude", "latitude"), crs = "EPSG:4326")
-      pts_proj <- project(pts_all, crs(mx_jar_raster))
-      ex <- tryCatch(extract(mx_jar_raster, pts_proj), error = function(e) NULL)
-      if (!is.null(ex) && ncol(ex) >= 2)
-        oof$pred_maxent <- as.numeric(ex[[2]])
-
-      # Override presence OOF with true CV held-out predictions
-      sp_csvs <- list.files(mx_out_dir, pattern = "samplePredictions\\.csv$",
-                            full.names = TRUE, recursive = FALSE)
-      if (length(sp_csvs) > 0) {
-        sp_all <- tryCatch({
-          do.call(rbind, lapply(sp_csvs, function(f) {
-            d <- tryCatch(read.csv(f), error = function(e) NULL)
-            if (is.null(d)) return(NULL)
-            test_col <- grep("test.or.train|test_or_train", names(d), value = TRUE, ignore.case = TRUE)[1]
-            if (is.na(test_col)) return(NULL)
-            d[grepl("^test$", trimws(as.character(d[[test_col]])), ignore.case = TRUE), , drop = FALSE]
-          }))
-        }, error = function(e) NULL)
-
-        if (!is.null(sp_all) && nrow(sp_all) > 0) {
-          pred_col <- grep("cloglog|logistic", names(sp_all), value = TRUE, ignore.case = TRUE)[1]
-          lon_col  <- grep("^longitude$|^lon$|^x$", names(sp_all), value = TRUE, ignore.case = TRUE)[1]
-          lat_col  <- grep("^latitude$|^lat$|^y$",  names(sp_all), value = TRUE, ignore.case = TRUE)[1]
-          if (!is.na(pred_col) && !is.na(lon_col) && !is.na(lat_col)) {
-            sp_all$lon_r <- round(as.numeric(sp_all[[lon_col]]), 5)
-            sp_all$lat_r <- round(as.numeric(sp_all[[lat_col]]), 5)
-            pres_idx <- which(oof$response == 1)
-            replaced <- 0L
-            for (i in pres_idx) {
-              m <- which(sp_all$lon_r == round(oof$longitude[i], 5) &
-                         sp_all$lat_r == round(oof$latitude[i], 5))
-              if (length(m) > 0) {
-                oof$pred_maxent[i] <- mean(as.numeric(sp_all[[pred_col]][m]), na.rm = TRUE)
-                replaced <- replaced + 1L
-              }
-            }
-            cat(sprintf("  MaxEnt OOF: %d/%d presences replaced with true CV held-out predictions\n",
-                        replaced, length(pres_idx)))
-          }
-        }
-      }
-    }
+    # MaxEnt is retained as a full-model sensitivity product, but is not given
+    # an OOF column until it is trained separately on the exact governed spatial
+    # folds for both presences and reference records. Mixing held-out presences
+    # with full-model reference predictions would leak training information.
+    oof$pred_maxent <- NA_real_
 
     saveRDS(list(lambdas = lambdas_dest, auc = mx_auc), file.path(model_dir, "model_maxent.rds"))
     results$maxent <- list(auc = mx_auc, tss = mx_tss)
@@ -296,7 +255,62 @@ train_all_models <- function(run_dir, run_id) {
     warning("MaxEnt jar not found or java not on PATH — MaxEnt skipped")
   }
 
-  # Save out-of-fold predictions for valid holdout evaluation in Phase 8
+  # Lock the algorithm set from complete, bounded spatial OOF predictions.
+  candidate_algorithms <- intersect(names(results), c("glm", "rf", "brt", "maxent"))
+  oof_complete <- vapply(candidate_algorithms, function(a) {
+    z <- oof[[paste0("pred_", a)]]
+    length(z) == nrow(oof) && all(is.finite(z)) && all(z >= 0 & z <= 1)
+  }, logical(1))
+  minimum_auc <- as.numeric(cfg_raw$modelling$minimum_auc %||% 0.65)
+  minimum_tss <- as.numeric(cfg_raw$modelling$minimum_tss %||% 0.30)
+  passes_quality <- vapply(candidate_algorithms, function(a) {
+    is.finite(results[[a]]$auc) && results[[a]]$auc >= minimum_auc &&
+      is.finite(results[[a]]$tss) && results[[a]]$tss >= minimum_tss
+  }, logical(1))
+  required_algorithms <- if (is.null(cfg_raw$modelling$required_algorithms)) {
+    character()
+  } else {
+    tolower(unlist(cfg_raw$modelling$required_algorithms))
+  }
+  eligible_algorithms <- candidate_algorithms[oof_complete & passes_quality]
+  missing_required <- setdiff(required_algorithms, eligible_algorithms)
+  if (length(missing_required) > 0) {
+    stop("Required algorithms lack complete spatial OOF predictions: ", paste(missing_required, collapse = ", "))
+  }
+  minimum_members <- as.integer(cfg_raw$modelling$minimum_ensemble_members %||% 2L)
+  if (length(eligible_algorithms) < minimum_members) {
+    stop(sprintf("Only %d algorithms passed spatial-OOF quality gates; at least %d are required",
+                 length(eligible_algorithms), minimum_members))
+  }
+  included_algorithms <- eligible_algorithms
+  weighting <- tolower(cfg_raw$modelling$ensemble_weighting %||% "equal")
+  if (!weighting %in% c("equal", "auc")) stop("Unsupported ensemble_weighting: ", weighting)
+  raw_weights <- if (weighting == "equal") {
+    rep(1, length(included_algorithms))
+  } else {
+    vapply(included_algorithms, function(a) results[[a]]$auc, numeric(1))
+  }
+  if (any(!is.finite(raw_weights)) || sum(raw_weights) <= 0) stop("Invalid ensemble weights")
+  ensemble_weights <- raw_weights / sum(raw_weights)
+  names(ensemble_weights) <- included_algorithms
+  oof$pred_ensemble <- as.numeric(as.matrix(oof[paste0("pred_", included_algorithms)]) %*% ensemble_weights)
+  ensemble_contract <- data.frame(
+    run_id = run_id,
+    algorithm = candidate_algorithms,
+    complete_spatial_oof = unname(oof_complete),
+    passes_quality_gates = unname(passes_quality),
+    included = candidate_algorithms %in% included_algorithms,
+    weight = ifelse(candidate_algorithms %in% included_algorithms,
+                    ensemble_weights[candidate_algorithms], 0),
+    exclusion_reason = ifelse(
+      candidate_algorithms %in% included_algorithms, "",
+      ifelse(!oof_complete, "incomplete_or_invalid_spatial_oof", "failed_prespecified_quality_gate")
+    ),
+    stringsAsFactors = FALSE
+  )
+  write.csv(ensemble_contract, file.path(model_dir, "ensemble_contract.csv"), row.names = FALSE)
+
+  # Save out-of-fold predictions for valid holdout evaluation in Phase 8.
   write.csv(oof, file.path(proc_dir, "oof_predictions.csv"), row.names = FALSE)
   
   # Save evaluation
@@ -324,7 +338,6 @@ train_all_models <- function(run_dir, run_id) {
   
   # Predict with each model
   preds <- list()
-  weights <- list()
 
   # Insert MaxEnt jar raster now that preds is defined
   if (exists("mx_jar_raster") && !is.null(mx_jar_raster)) {
@@ -334,7 +347,6 @@ train_all_models <- function(run_dir, run_id) {
   if (!is.null(results$glm)) {
     cat("  Predicting GLM...\n")
     preds$glm <- terra::predict(stk, glm_full, type = "response")
-    weights$glm <- results$glm$auc
   }
   
   if (!is.null(results$rf)) {
@@ -345,12 +357,10 @@ train_all_models <- function(run_dir, run_id) {
       fun = function(model, data) predict(model, data = data)$predictions,
       na.rm = TRUE
     )
-    weights$rf <- results$rf$auc
   }
   
   # MaxEnt raster already populated from jar output above (preds$maxent)
   if (!is.null(preds$maxent)) {
-    weights$maxent <- results$maxent$auc
   }
 
   if (!is.null(results$brt)) {
@@ -362,7 +372,6 @@ train_all_models <- function(run_dir, run_id) {
       fun = function(model, data) predict(model, newdata = data, n.trees = brt_obj$best_iter, type = "response"),
       na.rm = TRUE
     )
-    weights$brt <- results$brt$auc
   }
 
   # AOI mask — clip all outputs to study area AOI
@@ -375,10 +384,12 @@ train_all_models <- function(run_dir, run_id) {
     mask(r, msk, maskvalues = 0)
   }
 
-  if (length(preds) > 0) {
-    # Weighted ensemble
-    total_w <- sum(unlist(weights))
-    ensemble <- Reduce(`+`, Map(`*`, preds, unlist(weights) / total_w))
+  missing_present <- setdiff(included_algorithms, names(preds))
+  if (length(missing_present) > 0) stop("Missing full-model rasters for included algorithms: ", paste(missing_present, collapse = ", "))
+  if (length(included_algorithms) > 0) {
+    # Use the exact algorithm set and weights locked from spatial OOF predictions.
+    ensemble <- Reduce(`+`, Map(function(a, w) preds[[a]] * w,
+                                 included_algorithms, ensemble_weights[included_algorithms]))
     ensemble <- apply_aoi_mask(ensemble)
     writeRaster(ensemble, file.path(suit_dir, "suitability_present_ensemble.tif"), overwrite = TRUE)
     cat("  Ensemble created\n")
@@ -391,7 +402,8 @@ train_all_models <- function(run_dir, run_id) {
                 overwrite = TRUE)
   }
 
-  list(models = names(results), evaluation = eval_rows, ensemble = length(preds) > 0)
+  list(models = names(results), included_algorithms = included_algorithms,
+       evaluation = eval_rows, ensemble = length(included_algorithms) > 0)
 }
 
 if (sys.nframe() == 0) {
@@ -399,6 +411,7 @@ if (sys.nframe() == 0) {
   run_dir <- if (length(args) >= 1) args[[1]] else "."
   run_id <- if (length(args) >= 2) args[[2]] else paste0("RUN_", format(Sys.time(), "%Y%m%d_%H%M%S"))
   
-  result <- train_all_models(run_dir, run_id)
+  config_path <- if (length(args) >= 3) args[[3]] else "00_governance/config.yaml"
+  result <- train_all_models(run_dir, run_id, config_path)
   cat(sprintf("Phase 7 complete: %d models trained, ensemble = %s\n", length(result$models), result$ensemble))
 }

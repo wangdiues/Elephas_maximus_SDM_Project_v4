@@ -21,6 +21,9 @@ suppressPackageStartupMessages({
   library(terra)
   library(sf)
 })
+if (!exists("get_oof_ensemble_threshold", mode = "function")) {
+  source(file.path("03_analysis", "00_publication_helpers.R"))
+}
 
 # ── Source guard ──────────────────────────────────────────────────────────────
 if (!exists("create_all_figures", mode = "function")) {
@@ -268,13 +271,8 @@ create_all_figures <- function(run_dir, run_id) {
   eval_file <- file.path(run_dir, "02_models", "evaluation_all.csv")
   eval_data <- tryCatch(read.csv(eval_file), error = function(e) NULL)
 
-  # Ensemble threshold (TSS-optimal mean, fallback 0.5)
-  ens_threshold <- tryCatch({
-    if (!is.null(eval_data) && "threshold" %in% names(eval_data)) {
-      tv <- mean(eval_data$threshold, na.rm = TRUE)
-      if (is.finite(tv)) tv else 0.5
-    } else 0.5
-  }, error = function(e) 0.5)
+  # Single TSS-optimal threshold from spatial OOF ensemble predictions.
+  ens_threshold <- get_oof_ensemble_threshold(eval_data)
 
   # ── FIGURE 01: Present suitability ──────────────────────────────────────────
   # Gate: has_ggplot only  (suit_scale uses gradientn, NOT viridis)
@@ -590,7 +588,7 @@ create_all_figures <- function(run_dir, run_id) {
       aoi_geom(aoi_plot) +
       ggplot2::labs(
         title    = "GCM ensemble uncertainty in projected habitat suitability",
-        subtitle = sprintf("Standard deviation across 9 GCMs | SSP585 2071\u20132100 | Mean SD = %.3f",
+        subtitle = sprintf("Standard deviation across 8 GCMs | SSP585 2071\u20132100 | Mean SD = %.3f",
                            mean_sd)
       ) +
       map_theme() + ggplot2::coord_sf()

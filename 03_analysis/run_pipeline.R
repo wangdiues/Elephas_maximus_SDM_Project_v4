@@ -265,7 +265,7 @@ validate_required_figures <- function(fig_dir, require_future = FALSE,
     ))
   }
   
-  # Check for missing figures - warn but don't fail pipeline
+  # Missing required figures invalidate a production run.
   missing <- character(0)
   for (f in required) {
     if (!file.exists(file.path(fig_dir, f))) {
@@ -273,10 +273,7 @@ validate_required_figures <- function(fig_dir, require_future = FALSE,
     }
   }
   
-  if (length(missing) > 0) {
-    # Warn but don't stop - allows pipeline to continue to tables/reports
-    warning("Missing optional figures: ", paste(missing, collapse = ", "))
-  }
+  if (length(missing) > 0) stop("Missing required figures: ", paste(missing, collapse = ", "))
   
   invisible(TRUE)
 }
@@ -324,17 +321,22 @@ main <- function() {
   # Paths (guard against cfg$paths being NULL)
   paths <- cfg$paths %||% list()
   outputs_root <- file.path(repo_root, paths$outputs_root %||% "04_outputs")
+  runs_root <- file.path(repo_root, paths$runs_root %||% file.path(paths$outputs_root %||% "04_outputs", "runs"))
   logs_root <- file.path(repo_root, paths$logs_root %||% "06_logs")
   registry_root <- file.path(repo_root, paths$registry_root %||% "00_registry")
 
   # Create directories
   dir.create(outputs_root, recursive = TRUE)
+  dir.create(runs_root, recursive = TRUE)
   dir.create(logs_root, recursive = TRUE)
   dir.create(registry_root, recursive = TRUE)
 
-  # Fixed output root — all outputs written directly into 04_outputs/
+  # Immutable run isolation: a production run never writes into a previous run.
   run_id <- make_run_id()
-  run_dir <- outputs_root
+  run_dir <- file.path(runs_root, run_id)
+  if (dir.exists(run_dir) && length(list.files(run_dir, all.files = TRUE, no.. = TRUE)) > 0) {
+    stop("Refusing to reuse non-empty run directory: ", run_dir)
+  }
   manifest_dir <- file.path(run_dir, "00_manifest")
   dir.create(manifest_dir, recursive = TRUE)
   
@@ -360,12 +362,24 @@ main <- function() {
   })
   
   # Create run manifest
+  git_commit <- tryCatch(system2("git", c("rev-parse", "HEAD"), stdout = TRUE, stderr = FALSE),
+                         error = function(e) NA_character_)
+  git_status <- tryCatch(system2("git", c("status", "--porcelain"), stdout = TRUE, stderr = FALSE),
+                         error = function(e) "GIT_STATUS_UNAVAILABLE")
+  git_commit <- if (length(git_commit)) git_commit[[1]] else NA_character_
+  git_dirty <- length(git_status) > 0
+  if (isTRUE(cfg$execution$production_mode) && git_dirty) {
+    stop("Production mode requires a clean Git worktree; commit or explicitly archive all changes first")
+  }
   manifest_json <- c(
     "{",
     paste0('  "run_id": "', run_id, '",'),
     paste0('  "timestamp": "', format(Sys.time(), "%Y-%m-%d %H:%M:%S"), '",'),
     paste0('  "config_hash": "', unname(tools::md5sum(config_rel)), '",'),
-    paste0('  "code_version": "2.1-ensemble",'),
+    paste0('  "code_version": "3.0-submission-contract",'),
+    paste0('  "git_commit": "', ifelse(is.na(git_commit), "unknown", git_commit), '",'),
+    paste0('  "git_dirty": ', tolower(as.character(git_dirty)), ','),
+    paste0('  "production_mode": ', tolower(as.character(isTRUE(cfg$execution$production_mode))), ','),
     paste0('  "seed": ', seed),
     "}"
   )
@@ -387,6 +401,7 @@ main <- function() {
   source(file.path(repo_root, "03_analysis", "00_contract_helpers.R"), local = TRUE)
   source(file.path(repo_root, "03_analysis", "00_logging.R"), local = TRUE)
   source(file.path(repo_root, "03_analysis", "00_sdm_helpers.R"), local = TRUE)
+  source(file.path(repo_root, "03_analysis", "00_publication_helpers.R"), local = TRUE)
   source(file.path(repo_root, "03_analysis", "00_spatial_alignment.R"), local = TRUE)
   source(file.path(repo_root, "03_analysis", "00_seed_propagation.R"), local = TRUE)
   source(file.path(repo_root, "03_analysis", "00_data_validation.R"), local = TRUE)
@@ -401,21 +416,18 @@ main <- function() {
   source(file.path(repo_root, "03_analysis", "08_model_evaluation.R"), local = TRUE)
   source(file.path(repo_root, "03_analysis", "09_future_projections.R"), local = TRUE)
   source(file.path(repo_root, "03_analysis", "10_change_metrics.R"), local = TRUE)
+  source(file.path(repo_root, "03_analysis", "10_refugia.R"), local = TRUE)
   source(file.path(repo_root, "03_analysis", "10_figures.R"), local = TRUE)
-  # Source enhanced figures script if present (non-fatal if missing)
-  if (file.exists(file.path(repo_root, "03_analysis", "10_figures_enhanced.R")))
-    tryCatch(
-      source(file.path(repo_root, "03_analysis", "10_figures_enhanced.R"), local = TRUE),
-      error = function(e) message("Could not source 10_figures_enhanced.R: ", e$message)
-    )
-  # Source supplementary figures script if present (non-fatal if missing)
-  if (file.exists(file.path(repo_root, "03_analysis", "10_figures_supplementary.R")))
-    tryCatch(
-      source(file.path(repo_root, "03_analysis", "10_figures_supplementary.R"), local = TRUE),
-      error = function(e) message("Could not source 10_figures_supplementary.R: ", e$message)
-    )
+  enhanced_figures_script <- file.path(repo_root, "03_analysis", "10_figures_enhanced.R")
+  supplementary_figures_script <- file.path(repo_root, "03_analysis", "10_figures_supplementary.R")
+  if (!file.exists(enhanced_figures_script)) stop("Missing enhanced figure module")
+  if (!file.exists(supplementary_figures_script)) stop("Missing supplementary figure module")
+  source(enhanced_figures_script, local = TRUE)
+  source(supplementary_figures_script, local = TRUE)
   source(file.path(repo_root, "03_analysis", "11_uncertainty.R"), local = TRUE)
   source(file.path(repo_root, "03_analysis", "12_conservation_overlays.R"), local = TRUE)
+  source(file.path(repo_root, "03_analysis", "15_submission_validation.R"), local = TRUE)
+  source(file.path(repo_root, "03_analysis", "16_submission_figures.R"), local = TRUE)
   
   # Initialize centralized seed management (00_seed_propagation.R)
   initialize_seeds(cfg)
@@ -512,7 +524,14 @@ main <- function() {
     # Phase 5: Spatial CV
     set_module_seed("spatial_cv")
     append_log(pipeline_log, "INFO", run_id, "Phase 5: Spatial CV start")
-    fold_res <- create_spatial_folds_full(occ_res$csv, bg_res$csv, proc_dir, 5, 15, run_id, seed)
+    fold_res <- create_spatial_folds_full(
+      occ_res$csv, bg_res$csv, proc_dir,
+      k_folds = as.integer(cfg$spatial_cv$k_folds %||% 5L),
+      block_size_km = as.numeric(cfg$spatial_cv$block_size_km %||% 15),
+      run_id = run_id, seed = seed,
+      min_presences_per_fold = as.integer(cfg$spatial_cv$min_presences_per_fold %||% 10L),
+      candidate_block_sizes_km = unlist(cfg$spatial_cv$candidate_block_sizes_km %||% c(10, 15, 20, 25, 30))
+    )
     validate_vector_readable(fold_res$gpkg, "spatial_folds.gpkg")
     append_log(pipeline_log, "INFO", run_id, paste("Phase 5: Complete (folds =", fold_res$k_folds, ")"))
 
@@ -525,11 +544,16 @@ main <- function() {
     # Phase 7: Model Training
     set_module_seed("model_training")
     append_log(pipeline_log, "INFO", run_id, "Phase 7: Model training start")
-    train_res <- train_all_models(run_dir, run_id)
-    # T3-E: Phase 7 artifact assertion — all 3 model .rds files must exist
+    train_res <- train_all_models(run_dir, run_id, config_rel)
+    # Phase 7 artifact assertion — required binary classifiers must exist;
+    # optional sensitivity algorithms do not invalidate the primary run.
     local({
       mdl_dir <- file.path(run_dir, "02_models")
-      for (algo in c("glm", "maxent", "rf", "brt")) {
+      required_models <- setdiff(
+        tolower(unlist(cfg$modelling$candidate_algorithms %||% c("glm", "rf", "brt"))),
+        tolower(unlist(cfg$modelling$optional_algorithms %||% character()))
+      )
+      for (algo in required_models) {
         rds <- file.path(mdl_dir, sprintf("model_%s.rds", algo))
         if (!file.exists(rds) || file.info(rds)$size <= 0)
           stop(sprintf("Phase 7 artifact missing or empty: model_%s.rds", algo))
@@ -537,23 +561,10 @@ main <- function() {
     })
     append_log(pipeline_log, "INFO", run_id, paste("Phase 7: Complete (models =", length(train_res$models), ")"))
     
-    # Phase 8: Model Evaluation — isolated tryCatch (non-fatal) like Phases 10-12
+    # Phase 8: Model Evaluation (required, fail-fast)
     append_log(pipeline_log, "INFO", run_id, "Phase 8: Model evaluation start")
-    eval_res <- tryCatch(
-      evaluate_all_models(run_dir, run_id),
-      error = function(e8) {
-        append_log(pipeline_log, "WARNING", run_id,
-                   paste("Phase 8 non-fatal error:", conditionMessage(e8)))
-        NULL
-      }
-    )
-    tryCatch(
-      validate_eval_schema(file.path(run_dir, "02_models", "evaluation_all.csv")),
-      error = function(e) {
-        append_log(pipeline_log, "WARNING", run_id,
-                   paste("Phase 8 schema validation skipped:", conditionMessage(e)))
-      }
-    )
+    eval_res <- evaluate_all_models(run_dir, run_id)
+    validate_eval_schema(file.path(run_dir, "02_models", "evaluation_all.csv"))
     # Per-algorithm quality gates (targets.md §5.1)
     # AUC/TSS are FATAL; Boyce/Brier are soft — warn + flag for exclusion
     eval_data <- read.csv(file.path(run_dir, "02_models", "evaluation_all.csv"))
@@ -561,16 +572,18 @@ main <- function() {
       row  <- eval_data[i, ]
       algo <- row$algorithm
       if (algo == "ensemble") next
-      # Log warnings only — all algorithms are always included in ensemble
-      if (is.na(row$auc_mean)) {
-        append_log(pipeline_log, "WARNING", run_id, sprintf("%s AUC is NA", algo))
-      } else if (row$auc_mean < 0.65) {
-        append_log(pipeline_log, "WARNING", run_id,
-          sprintf("%s AUC %.3f < 0.65 minimum", algo, row$auc_mean))
+      if ("included_in_ensemble" %in% names(row) && !isTRUE(row$included_in_ensemble)) {
+        append_log(pipeline_log, "INFO", run_id, sprintf("%s excluded by spatial-OOF ensemble contract", algo))
+        next
       }
-      if (!is.na(row$tss_mean) && row$tss_mean < 0.30) {
-        append_log(pipeline_log, "WARNING", run_id,
-          sprintf("%s TSS %.3f < 0.30 minimum", algo, row$tss_mean))
+      if (is.na(row$auc_mean)) {
+        stop(sprintf("%s AUC is NA", algo))
+      } else if (row$auc_mean < as.numeric(cfg$modelling$minimum_auc %||% 0.65)) {
+        stop(sprintf("%s AUC %.3f is below the configured minimum", algo, row$auc_mean))
+      }
+      if (is.na(row$tss_mean)) stop(sprintf("%s TSS is NA", algo))
+      if (row$tss_mean < as.numeric(cfg$modelling$minimum_tss %||% 0.30)) {
+        stop(sprintf("%s TSS %.3f is below the configured minimum", algo, row$tss_mean))
       }
       if (!is.na(row$boyce) && row$boyce < 0.10) {
         append_log(pipeline_log, "WARNING", run_id,
@@ -606,11 +619,11 @@ main <- function() {
     }
     if (!is.null(eval_res)) append_log(pipeline_log, "INFO", run_id, "Phase 8: Complete")
     
-    # Phase 9: Future Projections (optional — isolated tryCatch, failures do not kill Phase 10+)
+    # Phase 9: Future Projections (required when enabled, fail-fast)
     run_future <- isTRUE(cfg$execution$run_future_projections)
     if (run_future) {
       append_log(pipeline_log, "INFO", run_id, "Phase 9: Future projections start")
-      tryCatch({
+      {
         max_future <- cfg$execution$max_future_scenarios
         if (is.null(max_future) || !is.finite(max_future)) max_future <- 12L
         # Build GCM filter from contracted GCMs only (excludes non-contracted GCMs found in data dir)
@@ -624,8 +637,13 @@ main <- function() {
             tolower(gsub("[^A-Za-z0-9]+", "_", tag))
           }, character(1), USE.NAMES = FALSE)
         }
-        fut_res <- project_future_with_mess(repo_root, run_dir, as.integer(max_future),
-                                            gcm_filter = gcm_filter_vec)
+        fut_res <- project_future_with_mess(
+          repo_root, run_dir, as.integer(max_future),
+          gcm_filter = gcm_filter_vec,
+          skip_existing = FALSE,
+          config_path = config_rel,
+          strict = isTRUE(cfg$execution$production_mode)
+        )
         append_log(pipeline_log, "INFO", run_id,
                    paste("Phase 9: Complete (scenarios =", fut_res$n_scenarios, ")"))
         # T4-A: Extrapolation fraction check (threshold: 60%)
@@ -655,88 +673,54 @@ main <- function() {
           append_log(warnings_log, "WARNING", run_id,
                      paste("Extrapolation fraction check failed:", conditionMessage(e_ex)))
         })
-      }, error = function(e9) {
-        append_log(warnings_log, "WARNING", run_id, paste("Phase 9 failed:", conditionMessage(e9)))
-        append_log(pipeline_log, "WARNING", run_id,
-                   paste("Phase 9: SKIPPED due to error —", conditionMessage(e9)))
-        run_future <<- FALSE
-      })
+      }
     }
     
-    # Phase 10: Change Metrics  (analytics.md §4 Phase 10) — isolated tryCatch (non-fatal)
+    # Phase 10: Change Metrics (required, fail-fast)
     append_log(pipeline_log, "INFO", run_id, "Phase 10: Change metrics start")
-    chg_res <- tryCatch(
-      module_10_change_metrics(run_dir, config_path = config_rel),
-      error = function(e) {
-        append_log(pipeline_log, "WARNING", run_id, paste("Phase 10 non-fatal error:", conditionMessage(e)))
-        list(n_maps = 0)
-      }
-    )
+    chg_res <- module_10_change_metrics(run_dir, config_path = config_rel)
+    if (run_future && (!is.finite(chg_res$n_maps) || chg_res$n_maps <= 0)) stop("Phase 10 produced no change maps")
     append_log(pipeline_log, "INFO", run_id,
       paste("Phase 10: Complete (scenarios =", chg_res$n_maps, ")"))
+    if (run_future) {
+      append_log(pipeline_log, "INFO", run_id, "Refugia calculation start")
+      refugia_res <- compute_refugia(run_dir, config_rel)
+      append_log(pipeline_log, "INFO", run_id,
+                 paste("Refugia calculation complete (denominator =", refugia_res$n_scenarios, ")"))
+    }
 
-    # Phase 11: Uncertainty — isolated tryCatch (non-fatal)
+    # Phase 11: Uncertainty (required, fail-fast)
     append_log(pipeline_log, "INFO", run_id, "Phase 11: Uncertainty start")
-    unc_res <- tryCatch(
-      compute_uncertainty(run_dir),
-      error = function(e) {
-        append_log(pipeline_log, "WARNING", run_id, paste("Phase 11 non-fatal error:", conditionMessage(e)))
-        list(n_groups = 0)
-      }
-    )
+    unc_res <- compute_uncertainty(run_dir)
+    if (run_future && (!is.finite(unc_res$n_groups) || unc_res$n_groups <= 0)) stop("Phase 11 produced no uncertainty groups")
     append_log(pipeline_log, "INFO", run_id, paste("Phase 11: Complete (groups =", unc_res$n_groups, ")"))
 
-    # Phase 12: Conservation Overlays — isolated tryCatch (non-fatal)
+    # Phase 12: Conservation Overlays (required, fail-fast)
     append_log(pipeline_log, "INFO", run_id, "Phase 12: Conservation overlays start")
-    ov_res <- tryCatch(
-      module_12_conservation_overlays(run_dir, normalizePath(config_rel, winslash = "/", mustWork = FALSE)),
-      error = function(e) {
-        append_log(pipeline_log, "WARNING", run_id, paste("Phase 12 non-fatal error:", conditionMessage(e)))
-        list(n_layers = 0)
-      }
-    )
+    ov_res <- module_12_conservation_overlays(run_dir, normalizePath(config_rel, winslash = "/", mustWork = FALSE))
+    if (!is.finite(ov_res$n_layers) || ov_res$n_layers <= 0) stop("Phase 12 produced no overlay layers")
     append_log(pipeline_log, "INFO", run_id, paste("Phase 12: Complete (layers =", ov_res$n_layers, ")"))
 
     # Figures — runs after Phases 11 & 12 so uncertainty and conservation data exist (T4-B)
     append_log(pipeline_log, "INFO", run_id, "Figures: start")
-    fig_res <- tryCatch(
-      create_all_figures(run_dir, run_id),
-      error = function(e) {
-        append_log(pipeline_log, "WARNING", run_id,
-                   paste("Basic figures non-fatal error:", conditionMessage(e)))
-        list(n_figures = 0)
-      }
-    )
+    fig_res <- create_all_figures(run_dir, run_id)
+    if (!is.finite(fig_res$n_figures) || fig_res$n_figures <= 0) stop("No figures were generated")
     
     # Check if future projections succeeded (for validation)
     has_future <- file.exists(file.path(run_dir, "04_future_projections", "future_projection_index.csv"))
     
-    # Validate figures (warn but don't fail)
-    tryCatch(
-      validate_required_figures(
+    validate_required_figures(
         fig_dir = file.path(run_dir, "08_figures_tables"),
         require_future = run_future,
         has_change_metrics = isTRUE(chg_res$n_maps > 0),
         has_future_projections = has_future
-      ),
-      error = function(e_val) {
-        append_log(pipeline_log, "WARNING", run_id,
-                   paste("Figure validation warning:", conditionMessage(e_val)))
-      }
-    )
+      )
     append_log(pipeline_log, "INFO", run_id, paste("Figures: Complete (n =", fig_res$n_figures, ")"))
 
     # Enhanced figures — non-fatal, runs E01-E13 publication improvements
     if (exists("create_enhanced_figures", mode = "function")) {
       append_log(pipeline_log, "INFO", run_id, "Enhanced figures: start")
-      enh_res <- tryCatch(
-        create_enhanced_figures(run_dir),
-        error = function(e) {
-          append_log(pipeline_log, "WARNING", run_id,
-                     paste("Enhanced figures non-fatal error:", conditionMessage(e)))
-          list(n_figures = 0)
-        }
-      )
+      enh_res <- create_enhanced_figures(run_dir)
       append_log(pipeline_log, "INFO", run_id,
                  paste("Enhanced figures: Complete (n =", enh_res$n_figures, ")"))
     }
@@ -744,33 +728,27 @@ main <- function() {
     # Supplementary figures — non-fatal, runs S1/S3-S8 diagnostics
     if (exists("create_supplementary_figures", mode = "function")) {
       append_log(pipeline_log, "INFO", run_id, "Supplementary figures: start")
-      supp_res <- tryCatch(
-        create_supplementary_figures(run_dir, run_id),
-        error = function(e) {
-          append_log(pipeline_log, "WARNING", run_id,
-                     paste("Supplementary figures non-fatal error:", conditionMessage(e)))
-          list(n_figures = 0)
-        }
-      )
+      supp_res <- create_supplementary_figures(run_dir, run_id)
       append_log(pipeline_log, "INFO", run_id,
                  paste("Supplementary figures: Complete (n =", supp_res$n_figures, ")"))
     }
 
-    # Publication tables — non-fatal
+    create_submission_figures(run_dir, config_rel)
+
+    write_figure_manifest(file.path(run_dir, "08_figures_tables"), run_id)
+
+    # Publication tables — required, fail-fast
     tbl_src <- file.path(repo_root, "03_analysis", "14_tables.R")
     if (file.exists(tbl_src)) {
       append_log(pipeline_log, "INFO", run_id, "Publication tables: start")
-      tryCatch({
+      {
         source(tbl_src, local = TRUE)
         if (exists("generate_publication_tables", mode = "function")) {
           tbl_res <- generate_publication_tables(run_dir, config_rel)
           append_log(pipeline_log, "INFO", run_id,
                      paste("Publication tables: Complete (n =", tbl_res$n_tables, ")"))
         }
-      }, error = function(e) {
-        append_log(pipeline_log, "WARNING", run_id,
-                   paste("Publication tables non-fatal error:", conditionMessage(e)))
-      })
+      }
     }
 
     # Snapshot predictor manifest to run manifest for audit trail
@@ -785,6 +763,10 @@ main <- function() {
     write_synthesis_reports(run_dir, run_id)
     validate_required_reports(file.path(run_dir, "09_reports"))
     append_log(pipeline_log, "INFO", run_id, "Phase 13: Complete")
+
+    append_log(pipeline_log, "INFO", run_id, "Submission contract validation start")
+    validate_submission_run(run_dir, config_rel)
+    append_log(pipeline_log, "INFO", run_id, "Submission contract validation complete")
     
   }, warning = function(w) {
     msg <- conditionMessage(w)
@@ -814,7 +796,7 @@ main <- function() {
     run_id = run_id,
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
     config_hash = unname(tools::md5sum(config_rel)),
-    code_version = "2.1-ensemble",
+    code_version = "3.0-submission-contract",
     success = ifelse(exec_ok, "TRUE", "FALSE"),
     duration_min = duration_min,
     output_folder = gsub("\\\\", "/", run_dir),

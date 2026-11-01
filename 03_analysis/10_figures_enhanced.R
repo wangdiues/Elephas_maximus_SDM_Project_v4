@@ -5,7 +5,7 @@
 #
 # Generates / fixes:
 #   E01  Figure 07 change map       — fixed consistent ±0.5 colour scale
-#   E02  MaxEnt metrics             — computed from raster extraction (not OOF)
+#   E02  Reserved: MaxEnt is excluded until genuine spatial OOF predictions exist
 #   E03  Figure 08 trajectories     — all 4 SSPs + ensemble mean ± SD ribbon
 #   E04  Gain/Loss/Persistence maps — 3-class categorical (SSP245 vs SSP585)
 #   E05  PA overlay analysis        — suitability inside/outside protected areas
@@ -22,6 +22,9 @@ suppressPackageStartupMessages({
   library(sf)
   library(ggplot2)
 })
+if (!exists("interaction_exposure_index", mode = "function")) {
+  source(file.path("03_analysis", "00_publication_helpers.R"))
+}
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -125,6 +128,14 @@ create_enhanced_figures <- function(run_dir) {
   pres_dir <- file.path(run_dir, "03_present_suitability")
   dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
 
+  ensemble_contract_path <- file.path(mod_dir, "ensemble_contract.csv")
+  if (!file.exists(ensemble_contract_path)) stop("ensemble_contract.csv is required for enhanced figures")
+  ensemble_contract <- read.csv(ensemble_contract_path, stringsAsFactors = FALSE)
+  included_algorithms <- toupper(ensemble_contract$algorithm[ensemble_contract$included %in% TRUE])
+  if (length(included_algorithms) < 2L) stop("At least two contracted ensemble members are required")
+  ensemble_label <- paste(included_algorithms, collapse = " + ")
+  threshold <- get_oof_ensemble_threshold(file.path(mod_dir, "evaluation_all.csv"))
+
   cat("=== Enhanced Figures ===\n")
   n <- 0
 
@@ -201,16 +212,13 @@ create_enhanced_figures <- function(run_dir) {
     )
   }
 
-  # Read threshold from evaluation_all.csv
-  threshold <- 0.5
+  # Read the single spatial-OOF ensemble threshold.
+  threshold <- NA_real_
   eval_csv  <- file.path(mod_dir, "evaluation_all.csv")
   if (file.exists(eval_csv)) {
-    ev <- tryCatch(read.csv(eval_csv), error = function(e) NULL)
-    if (!is.null(ev) && "threshold" %in% names(ev)) {
-      tv <- mean(ev$threshold, na.rm = TRUE)
-      if (is.finite(tv)) threshold <- tv
-    }
+    threshold <- get_oof_ensemble_threshold(eval_csv)
   }
+  if (!is.finite(threshold)) stop("Spatial-OOF ensemble threshold is unavailable")
 
   # Read modeling dataset
   dat <- tryCatch(read.csv(file.path(proc_dir, "modeling_dataset.csv")), error = function(e) NULL)
@@ -277,7 +285,7 @@ create_enhanced_figures <- function(run_dir) {
 
           fig <- make_2x2_figure(panels,
             title_str    = sprintf("Change in Habitat Suitability (%s vs Present) \u2014 Elephas maximus | Bhutan", period_lb),
-            subtitle_str = sprintf("Diverging scale [\u22120.5, +0.5] | Threshold = %.3f | Ensemble mean (GLM + RF + BRT + MaxEnt)", threshold))
+            subtitle_str = sprintf("Diverging scale [\u22120.5, +0.5] | OOF threshold = %.3f | Locked ensemble: %s", threshold, ensemble_label))
           if (!is.null(fig)) {
             fname <- sprintf("figure_habitat_change_%s.png", period)
             ggsave(file.path(fig_dir, fname), fig, width = 18, height = 14, dpi = 300, limitsize = FALSE)
@@ -324,7 +332,7 @@ create_enhanced_figures <- function(run_dir) {
 
         fig <- make_2x2_figure(panels,
           title_str    = sprintf("Future Habitat Suitability \u2014 %s | Elephas maximus | Bhutan", period_lb),
-          subtitle_str = sprintf("Threshold = %.3f | Ensemble mean (GLM + RF + BRT + MaxEnt) | 8 CMIP6 GCMs", threshold))
+          subtitle_str = sprintf("OOF threshold = %.3f | Locked ensemble: %s | 8 CMIP6 GCMs", threshold, ensemble_label))
         if (!is.null(fig)) {
           fname <- sprintf("figure_future_suit_%s.png", period)
           ggsave(file.path(fig_dir, fname), fig, width = 18, height = 14, dpi = 300, limitsize = FALSE)
@@ -334,64 +342,8 @@ create_enhanced_figures <- function(run_dir) {
     }
   }, error = function(e) cat(sprintf("  E11 failed: %s\n", conditionMessage(e))))
 
-  # ── E02: MaxEnt metrics from raster extraction ────────────────────────────
-  tryCatch({
-    maxent_tif <- file.path(pres_dir, "suitability_present_maxent.tif")
-    oof_csv    <- file.path(proc_dir, "oof_predictions.csv")
-    if (file.exists(maxent_tif) && file.exists(oof_csv)) {
-      cat("E02: Computing MaxEnt metrics from raster...\n")
-      oof <- read.csv(oof_csv)
-      mx_rast <- rast(maxent_tif)
-
-      pres_coords <- oof[oof$response == 1, c("longitude", "latitude")]
-      bg_coords   <- oof[, c("longitude", "latitude")]
-
-      # Project to raster CRS
-      pres_sf_mx <- st_transform(st_as_sf(pres_coords, coords = c("longitude","latitude"), crs = 4326),
-                                 crs(mx_rast))
-      bg_sf_mx   <- st_transform(st_as_sf(bg_coords,   coords = c("longitude","latitude"), crs = 4326),
-                                 crs(mx_rast))
-
-      extract_vals <- function(r, coords) {
-        ex <- terra::extract(r, coords)
-        # terra::extract with matrix coords returns matrix/df — grab last column (value col)
-        if (is.data.frame(ex)) as.numeric(ex[[ncol(ex)]]) else as.numeric(ex[, ncol(ex)])
-      }
-      pres_pred <- extract_vals(mx_rast, st_coordinates(pres_sf_mx))
-      bg_pred   <- extract_vals(mx_rast, st_coordinates(bg_sf_mx))
-      pres_pred <- pres_pred[!is.na(pres_pred)]
-      bg_pred   <- bg_pred[!is.na(bg_pred)]
-
-      if (length(pres_pred) > 5 && length(bg_pred) > 5) {
-        # Load metric functions
-        src_dir <- file.path(normalizePath(file.path(run_dir, "..", "..", ".."), mustWork = FALSE), "03_analysis")
-        if (!exists("boyce_continuous") && file.exists(file.path(src_dir, "00_sdm_helpers.R"))) {
-          source(file.path(src_dir, "00_sdm_helpers.R"))
-        }
-
-        if (exists("boyce_continuous")) {
-          boyce_mx  <- boyce_continuous(pres_pred, bg_pred)$boyce_index
-          cat(sprintf("  MaxEnt Boyce (raster) = %.3f\n", boyce_mx))
-          # Write to metrics_summary alongside note
-          mx_note <- data.frame(
-            metric = "boyce_maxent_raster",
-            value  = boyce_mx,
-            note   = "Computed from full raster predictions at P/A locations (not OOF holdout)",
-            stringsAsFactors = FALSE
-          )
-          write.csv(mx_note, file.path(mod_dir, "maxent_raster_metrics.csv"), row.names = FALSE)
-
-          # Update metrics_summary if maxent row exists
-          ms <- tryCatch(read.csv(file.path(mod_dir, "metrics_summary.csv")), error = function(e) NULL)
-          if (!is.null(ms) && "maxent" %in% ms$algorithm) {
-            ms$boyce[ms$algorithm == "maxent"] <- boyce_mx
-            write.csv(ms, file.path(mod_dir, "metrics_summary.csv"), row.names = FALSE)
-            cat("  Updated metrics_summary.csv with MaxEnt Boyce\n")
-          }
-        }
-      }
-    }
-  }, error = function(e) cat(sprintf("  E02 failed: %s\n", conditionMessage(e))))
+  # E02 intentionally has no implementation. Full-model raster extraction at
+  # training locations is not an acceptable substitute for spatial OOF metrics.
 
   # ── E03: All-4-SSP suitability area trajectories ──────────────────────────
   tryCatch({
@@ -1120,8 +1072,8 @@ create_enhanced_figures <- function(run_dir) {
             patchwork::plot_layout(widths = c(2.3, 1)) +
             patchwork::plot_annotation(
               title    = title_str,
-              subtitle = sprintf("Suitable habitat defined as suitability \u2265 %.2f | Ensemble mean (GLM + RF + BRT + MaxEnt) | 8 CMIP6 GCMs",
-                                 threshold),
+              subtitle = sprintf("Suitable habitat defined as suitability \u2265 %.3f | Locked ensemble: %s | 8 CMIP6 GCMs",
+                                 threshold, ensemble_label),
               caption  = "Dashed line = present-day baseline",
               tag_levels = "a"
             )
@@ -1271,7 +1223,8 @@ create_enhanced_figures <- function(run_dir) {
             scale_fill_manual(values = rank_colors) +
             scale_x_continuous(limits = c(0, max(rel_df$algo_sd, na.rm = TRUE) * 1.35)) +
             labs(title = "c  Algorithm Disagreement",
-                 subtitle = "Mean SD across GLM/RF/BRT/MaxEnt\nat SSP5-8.5 2071\u20132100",
+                 subtitle = paste0("Mean SD across eligible algorithms (", ensemble_label,
+                                   ") at SSP5-8.5 2071\u20132100"),
                  x = "Mean SD (algorithm spread)", y = NULL) +
             theme_bw() +
             theme(axis.text.y    = element_blank(),
@@ -1357,7 +1310,7 @@ create_enhanced_figures <- function(run_dir) {
 
         fig <- make_2x2_figure(panels,
           title_str    = sprintf("GCM Ensemble Uncertainty in Projected Habitat Suitability \u2014 %s | Bhutan", period_lb),
-          subtitle_str = "Standard deviation across 8 CMIP6 GCMs | Ensemble mean (GLM + RF + BRT + MaxEnt)")
+          subtitle_str = paste("Standard deviation across 8 CMIP6 GCMs | Locked ensemble:", ensemble_label))
         if (!is.null(fig)) {
           fname <- sprintf("figure_uncertainty_%s.png", period)
           ggsave(file.path(fig_dir, fname), fig, width = 18, height = 14, dpi = 300, limitsize = FALSE)
@@ -1367,7 +1320,7 @@ create_enhanced_figures <- function(run_dir) {
     }
   }, error = function(e) cat(sprintf("  E12 failed: %s\n", conditionMessage(e))))
 
-  # ── E10: Human–Elephant Conflict Risk (present + all future scenarios) ─────
+  # ── E10: Potential human–elephant interaction exposure ────────────────────
   tryCatch({
     int_dir   <- file.path(run_dir, "02_data_intermediate")
     fp_tif    <- file.path(int_dir, "human_footprint_harmonized.tif")
@@ -1375,7 +1328,7 @@ create_enhanced_figures <- function(run_dir) {
     pres_ens  <- file.path(pres_dir, "suitability_present_ensemble.tif")
 
     if (file.exists(fp_tif) && file.exists(pres_ens)) {
-      cat("E10: Human-elephant conflict risk maps...\n")
+      cat("E10: Potential human-elephant interaction exposure maps...\n")
 
       suit_pres <- rast(pres_ens)
 
@@ -1415,11 +1368,11 @@ create_enhanced_figures <- function(run_dir) {
         } else { human_pressure <- fp_norm }
       } else { human_pressure <- fp_norm }
 
-      # ── Conflict risk from a suitability raster ───────────────────────────
-      make_conflict <- function(suit_r) {
+      # Descriptive exposure index; this is not a fitted conflict-risk model.
+      make_exposure <- function(suit_r) {
         s  <- tryCatch(resample(suit_r, human_pressure, method = "bilinear"),
                        error = function(e) suit_r)
-        norm_rast(norm_rast(s) * human_pressure)
+        interaction_exposure_index(s, human_pressure)
       }
 
       # Colour scales
@@ -1428,13 +1381,13 @@ create_enhanced_figures <- function(run_dir) {
           colours  = c("#ffffcc","#fecc5c","#fd8d3c","#e31a1c","#800026"),
           limits   = c(0, 1), breaks = c(0, 0.25, 0.5, 0.75, 1),
           labels   = c("Low","","Moderate","","Very High"),
-          na.value = "grey88", name = "Conflict\nRisk")
+          na.value = "grey88", name = "Interaction\nexposure")
 
       delta_scale <- function()
         scale_fill_gradientn(
           colours  = c("#053061","#2166ac","#67a9cf","#f7f7f7","#ef8a62","#ca0020","#67000d"),
           limits   = c(-0.5, 0.5), oob = scales::squish,
-          na.value = "grey88", name = "\u0394 Risk")
+          na.value = "grey88", name = "\u0394 exposure")
 
       risk_plot <- function(risk_r, title_str, show_dzong = FALSE, show_hwc = FALSE) {
         df   <- rast_to_df(risk_r, aoi_v)
@@ -1468,16 +1421,19 @@ create_enhanced_figures <- function(run_dir) {
       }
 
       # ── Present ───────────────────────────────────────────────────────────
-      risk_pres <- make_conflict(suit_pres)
+      risk_pres <- make_exposure(suit_pres)
       p_pres <- risk_plot(risk_pres,
-                          "Present-day human-elephant conflict risk \u2014 Elephas maximus (Bhutan)",
+                          "Present potential human-elephant interaction exposure \u2014 Elephas maximus (Bhutan)",
                           show_dzong = TRUE, show_hwc = TRUE)
-      save_fig(p_pres, file.path(fig_dir, "figure_conflict_present.png"), 10, 9)
+      save_publication_figure(
+        p_pres, file.path(fig_dir, "main_figure_06_interaction_exposure_present"),
+        width_mm = 178, height_mm = 145, line_art_dpi = 600
+      )
       n <- n + 1
 
 
 
-      # ── Future conflict risk + change: all 4 SSPs × all 3 periods ───────────
+      # ── Future interaction exposure + change: all SSP-period summaries ─────
       all_ens <- list.files(fut_dir, pattern = "^future_gcm_ensemble_.*[.]tif$", full.names = TRUE)
       sum_rows <- list()
       bbox_pres <- data_bbox(risk_pres)   # consistent extent across all change maps
@@ -1494,7 +1450,7 @@ create_enhanced_figures <- function(run_dir) {
           if (length(f_match) == 0) next
           suit_f <- tryCatch(rast(f_match[1]), error = function(e) NULL)
           if (is.null(suit_f)) next
-          risk_f <- make_conflict(suit_f)
+          risk_f <- make_exposure(suit_f)
           lab    <- ssp_labels_all[ssp]
 
           # Absolute risk panel
@@ -1507,7 +1463,7 @@ create_enhanced_figures <- function(run_dir) {
           p_d <- ggplot() +
             geom_raster(data = df_d, aes(x = x, y = y, fill = value)) +
             aoi_layer + delta_scale() +
-            labs(title = sprintf("%s | \u0394 risk (%s \u2212 Present)", lab, period_lb),
+            labs(title = sprintf("%s | \u0394 exposure (%s \u2212 Present)", lab, period_lb),
                  x = NULL, y = NULL) +
             map_theme() +
             coord_sf(xlim = bbox_pres$xlim, ylim = bbox_pres$ylim, expand = FALSE,
@@ -1517,7 +1473,7 @@ create_enhanced_figures <- function(run_dir) {
           # Summary row
           sum_rows[[length(sum_rows)+1]] <- data.frame(
             SSP = toupper(ssp), Period = paste(yrs[1], yrs[2], sep = "-"),
-            Mean_conflict_risk = round(mean(values(risk_f), na.rm = TRUE), 3),
+            Mean_interaction_exposure = round(mean(values(risk_f), na.rm = TRUE), 3),
             stringsAsFactors = FALSE)
 
           rm(suit_f, risk_f, delta_r, df_d); gc(verbose = FALSE)
@@ -1525,31 +1481,31 @@ create_enhanced_figures <- function(run_dir) {
 
         # Save 2×2 absolute risk figure
         fig_fut <- make_2x2_figure(fut_panels,
-          title_str    = sprintf("Human\u2013Elephant Conflict Risk \u2014 %s | Elephas maximus | Bhutan", period_lb),
-          subtitle_str = "Risk = normalised suitability \u00d7 human pressure (footprint + settlement proximity) | Ensemble mean (GLM + RF + BRT + MaxEnt)")
+          title_str    = sprintf("Potential Human\u2013Elephant Interaction Exposure \u2014 %s | Elephas maximus | Bhutan", period_lb),
+          subtitle_str = "Exposure index = geometric mean of normalised suitability and human pressure; not a fitted conflict-risk model")
         if (!is.null(fig_fut)) {
-          fname <- sprintf("figure_conflict_future_%s.png", period)
+          fname <- sprintf("figure_interaction_exposure_future_%s.png", period)
           ggsave(file.path(fig_dir, fname), fig_fut, width = 18, height = 14, dpi = 300, limitsize = FALSE)
           cat(sprintf("  + %s\n", fname)); n <- n + 1
           # Backward-compatible aliases for end-century period
           if (period == "2071_2100")
             file.copy(file.path(fig_dir, fname),
-                      file.path(fig_dir, "figure_conflict_future_end_century.png"),
+                      file.path(fig_dir, "figure_interaction_exposure_future_end_century.png"),
                       overwrite = TRUE)
         }
 
         # Save 2×2 change figure
         fig_chg <- make_2x2_figure(chg_panels,
-          title_str    = sprintf("Change in Conflict Risk (%s vs Present) \u2014 Bhutan", period_lb),
-          subtitle_str = "Blue = risk decrease | Red = risk increase | Squished at \u00b10.5")
+          title_str    = sprintf("Change in Potential Interaction Exposure (%s vs Present) \u2014 Bhutan", period_lb),
+          subtitle_str = "Blue = exposure decrease | Red = exposure increase | Squished at \u00b10.5")
         if (!is.null(fig_chg)) {
-          fname <- sprintf("figure_conflict_change_%s.png", period)
+          fname <- sprintf("figure_interaction_exposure_change_%s.png", period)
           ggsave(file.path(fig_dir, fname), fig_chg, width = 18, height = 14, dpi = 300, limitsize = FALSE)
           cat(sprintf("  + %s\n", fname)); n <- n + 1
           # Backward-compatible alias for end-century period
           if (period == "2071_2100")
             file.copy(file.path(fig_dir, fname),
-                      file.path(fig_dir, "figure_conflict_change.png"),
+                      file.path(fig_dir, "figure_interaction_exposure_change.png"),
                       overwrite = TRUE)
         }
       }
@@ -1559,11 +1515,11 @@ create_enhanced_figures <- function(run_dir) {
         pres_mean <- round(mean(values(risk_pres), na.rm = TRUE), 3)
         sum_df    <- rbind(
           data.frame(SSP = "Present", Period = "Baseline",
-                     Mean_conflict_risk = pres_mean, stringsAsFactors = FALSE),
+                     Mean_interaction_exposure = pres_mean, stringsAsFactors = FALSE),
           do.call(rbind, sum_rows))
         sum_df <- sum_df[order(sum_df$SSP, sum_df$Period), ]
-        write.csv(sum_df, file.path(fig_dir, "table_conflict_risk_summary.csv"), row.names = FALSE)
-        cat("  + table_conflict_risk_summary.csv\n")
+        write.csv(sum_df, file.path(fig_dir, "table_interaction_exposure_summary.csv"), row.names = FALSE)
+        cat("  + table_interaction_exposure_summary.csv\n")
       }
 
       rm(risk_pres, human_pressure, fp_norm, suit_pres); gc(verbose = FALSE)
@@ -1573,7 +1529,7 @@ create_enhanced_figures <- function(run_dir) {
   # ── E13  Per-algorithm present suitability ─────────────────────────────────
   cat("\n[E13] Per-algorithm present suitability map\n")
   tryCatch({
-    algos <- c(glm = "GLM", rf = "RF", brt = "BRT", maxent = "MaxEnt")
+    algos <- setNames(included_algorithms, tolower(included_algorithms))
     algo_panels <- list()
     bbox_algo   <- NULL   # shared extent derived from first available raster
     aoi_layer_e13 <- if (!is.null(aoi_sf_utm))
@@ -1591,8 +1547,8 @@ create_enhanced_figures <- function(run_dir) {
       df <- rast_to_df(r, aoi_v)
       if (nrow(df) == 0) { cat(sprintf("  Skipping %s — empty df\n", key)); next }
 
-      pct <- pct_suitable(r, thr = 0.5)
-      ann <- if (!is.na(pct)) sprintf("Suitable \u226550%%: %.1f%%", pct) else ""
+      pct <- pct_suitable(r, thr = threshold)
+      ann <- if (!is.na(pct)) sprintf("Suitable at OOF threshold: %.1f%%", pct) else ""
 
       p <- ggplot(df, aes(x = x, y = y, fill = value)) +
         geom_raster() +
@@ -1609,11 +1565,12 @@ create_enhanced_figures <- function(run_dir) {
 
     if (length(algo_panels) > 0 && requireNamespace("patchwork", quietly = TRUE)) {
       # Use fixed algo order (not SSP order)
-      ordered_panels <- algo_panels[intersect(c("glm","rf","brt","maxent"), names(algo_panels))]
+      ordered_panels <- algo_panels[intersect(tolower(included_algorithms), names(algo_panels))]
       fig_e13 <- patchwork::wrap_plots(ordered_panels, ncol = 2) +
         patchwork::plot_annotation(
           title    = "Present Habitat Suitability by Algorithm \u2014 Elephas maximus | Bhutan",
-          subtitle = "Ensemble components: GLM, Random Forest, Boosted Regression Trees, MaxEnt | Threshold = 0.50",
+          subtitle = paste("Eligible spatial-OOF ensemble members:", ensemble_label,
+                           "| Classifications use the OOF ensemble threshold"),
           caption  = "CRS: EPSG:32645 (WGS 84 / UTM Zone 45N)"
         )
       ggsave(file.path(fig_dir, "figure_present_suitability_by_algorithm.png"),

@@ -12,14 +12,15 @@ module_10_change_metrics <- function(run_dir, config_path = NULL, threshold = 0.
     terra::writeRaster(r, path, overwrite = TRUE)
   }
 
-  # Read TSS-optimized threshold from evaluation_all.csv if available
+  # Read the single spatial-OOF ensemble TSS threshold.
   eval_csv <- file.path(run_dir, "02_models", "evaluation_all.csv")
   if (file.exists(eval_csv)) {
-    ev <- tryCatch(read.csv(eval_csv), error = function(e) NULL)
-    if (!is.null(ev) && "threshold" %in% names(ev)) {
-      thr_val <- mean(ev$threshold, na.rm = TRUE)
-      if (is.finite(thr_val)) threshold <- thr_val
-    }
+    ev <- read.csv(eval_csv, stringsAsFactors = FALSE)
+    ens <- ev[ev$algorithm == "ensemble", , drop = FALSE]
+    if (nrow(ens) != 1 || !is.finite(ens$threshold[[1]])) stop("A unique finite OOF ensemble threshold is required")
+    threshold <- ens$threshold[[1]]
+  } else {
+    stop("Missing model evaluation table: ", eval_csv)
   }
 
   fut_dir  <- file.path(run_dir, "04_future_projections")
@@ -29,19 +30,18 @@ module_10_change_metrics <- function(run_dir, config_path = NULL, threshold = 0.
   ens_maps <- list.files(fut_dir, pattern = "^future_gcm_ensemble_.*\\.tif$",
                          full.names = TRUE)
   if (length(ens_maps) == 0) {
-    # Fallback: any file with 'ensemble' in name (covers legacy naming)
-    ens_maps <- list.files(fut_dir, pattern = ".*ensemble.*\\.tif$",
-                           full.names = TRUE)
+    stop("Phase 10: no SSP-period GCM ensemble maps found")
   }
-  if (length(ens_maps) == 0) {
-    cat("Phase 10: no future suitability maps found — skipping change metrics\n")
-    return(list(n_maps = 0))
+  if (!is.null(config_path) && file.exists(config_path)) {
+    cfg_contract <- yaml::read_yaml(config_path)
+    expected_maps <- as.integer(cfg_contract$climate_projections$expected_ssp_period_summaries)
+    if (length(ens_maps) != expected_maps) stop("Expected ", expected_maps,
+                                                " SSP-period summaries; found ", length(ens_maps))
   }
 
   present_path <- file.path(run_dir, "03_present_suitability", "suitability_present_ensemble.tif")
   if (!file.exists(present_path)) {
-    cat("Phase 10: present suitability not found — skipping change metrics\n")
-    return(list(n_maps = 0))
+    stop("Phase 10: present suitability not found")
   }
   present <- terra::rast(present_path)
 

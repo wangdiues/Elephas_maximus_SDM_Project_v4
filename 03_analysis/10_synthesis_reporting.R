@@ -29,6 +29,7 @@ write_synthesis_reports <- function(run_dir, run_id) {
   # Load run artifacts
   # ============================================================
   eval_df     <- safe_read(file.path(run_dir, "02_models", "evaluation_all.csv"))
+  ensemble_contract <- safe_read(file.path(run_dir, "02_models", "ensemble_contract.csv"))
   pred_mf     <- safe_read(file.path(run_dir, "01_processed_data", "predictor_manifest.csv"))
   fut_idx     <- safe_read(file.path(run_dir, "04_future_projections", "future_projection_index.csv"))
   hab_df      <- safe_read(file.path(run_dir, "05_change_metrics", "habitat_area_change_summary.csv"))
@@ -83,6 +84,9 @@ write_synthesis_reports <- function(run_dir, run_id) {
     paste(cfg_snap$climate_projections$gcms_contract, collapse = ", ")
   else
     "MRI-ESM2-0, ACCESS-CM2, CNRM-CM6-1, CNRM-ESM2-1, INM-CM4-8, INM-CM5-0, MIROC6, MPI-ESM1-2-LR"
+  included_algorithms <- if (!is.null(ensemble_contract) && all(c("algorithm", "included") %in% names(ensemble_contract)))
+    toupper(ensemble_contract$algorithm[ensemble_contract$included %in% TRUE]) else character(0)
+  included_label <- if (length(included_algorithms)) paste(included_algorithms, collapse = ", ") else "no eligible members recorded"
   code_version <- if (!is.null(run_manifest$code_version)) run_manifest$code_version else "2.1-ensemble"
   config_hash  <- if (!is.null(run_manifest$config_hash))  substr(run_manifest$config_hash, 1, 8) else "unknown"
   run_seed     <- if (!is.null(run_manifest$seed))          run_manifest$seed else NA
@@ -93,11 +97,11 @@ write_synthesis_reports <- function(run_dir, run_id) {
     floor_check <- function(row) {
       checks <- c()
       notes  <- c()
-      if (!is.na(row$auc_mean) && row$auc_mean < 0.65) checks <- c(checks, "AUC FAIL")
-      if (is.na(row$tss_mean)) notes <- c(notes, "TSS=NA") else if (row$tss_mean < 0.30) checks <- c(checks, "TSS FAIL")
-      if (!is.na(row$boyce)    && row$boyce    < 0.10) checks <- c(checks, "Boyce FAIL")
-      if (!is.na(row$brier)    && row$brier    > 0.25) checks <- c(checks, "Brier FAIL")
-      status <- if (length(checks) == 0) "PASS" else paste(checks, collapse = "; ")
+      if (is.na(row$auc_mean)) checks <- c(checks, "AUC unavailable") else if (row$auc_mean < 0.65) checks <- c(checks, "AUC FAIL")
+      if (is.na(row$tss_mean)) checks <- c(checks, "TSS unavailable") else if (row$tss_mean < 0.30) checks <- c(checks, "TSS FAIL")
+      if (!is.na(row$boyce) && row$boyce < 0.10) notes <- c(notes, "Boyce below 0.10 (diagnostic)")
+      if (!is.na(row$brier) && row$brier > 0.25) notes <- c(notes, "Brier above 0.25 (diagnostic)")
+      status <- if (length(checks) == 0) "AUC/TSS gates pass" else paste(checks, collapse = "; ")
       if (length(notes) > 0) paste0(status, " (", paste(notes, collapse = ", "), ")") else status
     }
     for (i in seq_len(nrow(eval_df))) {
@@ -196,7 +200,7 @@ write_synthesis_reports <- function(run_dir, run_id) {
     "",
     "## M — Model",
     "",
-    "### Per-algorithm metrics (FATAL floors: AUC≥0.65, TSS≥0.30, Boyce≥0.10, Brier≤0.25)",
+    "### Per-algorithm spatial-OOF metrics (primary eligibility uses AUC≥0.65 and TSS≥0.30; Boyce and Brier are diagnostics)",
     "",
     if (length(algo_lines) > 0) algo_lines else "  - No evaluation data available",
     "",
@@ -206,7 +210,7 @@ write_synthesis_reports <- function(run_dir, run_id) {
     "",
     "## A — Assessment",
     "",
-    paste0("**Scenario coverage:** ", n_scenarios, " scenarios (target: ", max_future_target, " = 9 GCM \u00d7 3 periods \u00d7 4 SSP)"),
+    paste0("**Scenario coverage:** ", n_scenarios, " scenarios (target: ", max_future_target, " = 8 GCM \u00d7 4 SSP \u00d7 3 periods)"),
     "",
     if (length(extrap_lines) > 0) c("**Extrapolation:**", extrap_lines) else character(0),
     "",
@@ -220,9 +224,9 @@ write_synthesis_reports <- function(run_dir, run_id) {
     "- [x] True absence points used as background (no pseudo-absence generation)",
     "- [x] Predictor selection with collinearity removal",
     "- [x] Spatial cross-validation (15 km blocks, 5 folds)",
-    "- [x] Multiple algorithms (GLM, MaxEnt, RF, BRT)",
-    "- [x] Ensemble weighting (AUC-weighted mean)",
-    "- [x] Threshold method: max_tss",
+    "- [x] Candidate algorithms evaluated with spatial out-of-fold predictions",
+    paste0("- [x] Equal-weight ensemble members: ", included_label),
+    "- [x] Threshold method: TSS optimum from spatial out-of-fold ensemble predictions",
     "- [x] Present suitability map produced",
     "- [x] Future projections (CMIP6)",
     "- [x] Uncertainty quantification (GCM SD)",
@@ -253,10 +257,10 @@ write_synthesis_reports <- function(run_dir, run_id) {
     "| Algorithm | Type | Notes |",
     "|-----------|------|-------|",
     "| GLM | Generalized Linear Model | Logistic regression, true presence/absence |",
-    "| MaxEnt | Maximum Entropy | maxnet implementation, true absences as background |",
+    "| MaxEnt | Maximum Entropy | Sensitivity-only until valid spatial out-of-fold predictions pass ensemble gates |",
     "| BRT | Boosted Regression Trees | gbm implementation, true presence/absence |",
     "| RF | Random Forest | ranger implementation, true presence/absence |",
-    "| Ensemble | Weighted mean | AUC-weighted combination |",
+    paste0("| Ensemble | Equal-weight mean | Eligible spatial-OOF members: ", included_label, " |"),
     "",
     "## Spatial Cross-Validation",
     "",
@@ -264,18 +268,19 @@ write_synthesis_reports <- function(run_dir, run_id) {
     "- Evaluation metrics: AUC, TSS, Boyce index, Brier score, calibration slope, Moran's I",
     "- Threshold method: maximum TSS (max_tss)",
     "",
-    "## Ensemble Weighting",
+    "## Ensemble Definition",
     "",
-    "- Method: AUC-weighted mean across algorithms",
-    "- Algorithms included: GLM, MaxEnt, BRT, Random Forest",
+    "- Method: equal weights among eligible algorithms with complete bounded spatial out-of-fold predictions",
+    paste0("- Algorithms included: ", included_label),
+    "- MaxEnt is sensitivity-only unless valid spatial out-of-fold predictions pass the same quality gates",
     "",
     "## Future Scenarios",
     "",
-    paste0("- Target: ", max_future_target, " scenarios (9 GCM \u00d7 3 periods \u00d7 4 SSP)"),
+    paste0("- Target: ", max_future_target, " scenarios (8 GCM \u00d7 4 SSP \u00d7 3 periods)"),
     paste0("- Processed: ", n_scenarios),
     paste0("- GCMs: ", gcm_list),
     "- SSPs: SSP1-2.6, SSP2-4.5, SSP3-7.0, SSP5-8.5",
-    "- Periods: 2021–2040, 2041–2060, 2081–2100",
+    "- Periods: 2021–2050, 2051–2080, 2071–2100",
     "- Extrapolation: MESS analysis performed; masked where MESS < 0"
   )
   writeLines(methods, file.path(out_dir, "methods_appendix.md"))
@@ -337,7 +342,7 @@ write_synthesis_reports <- function(run_dir, run_id) {
     "",
     "- Priority areas with high present suitability and high future persistence should receive enhanced protection.",
     "- Areas projected as high-gain zones under multiple GCMs represent expansion corridors.",
-    "- Human-elephant conflict zones overlapping high-suitability habitat require targeted mitigation measures.",
+    "- Areas with high potential interaction exposure may warrant targeted field assessment before mitigation priorities are set.",
     "",
     "## Caveats",
     "",

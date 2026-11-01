@@ -5,13 +5,16 @@ Updated: 2026-03-15
 
 ---
 
-## Per-Algorithm Quality Gates (FATAL if not met)
+## Primary Ensemble Eligibility Gates (FATAL if not met)
 
 | Metric | Threshold | Applies to | Consequence |
 |--------|-----------|-----------|-------------|
-| AUC (ROC) | ≥ 0.65 | GLM, RF, BRT, MaxEnt | FATAL — algorithm excluded from ensemble |
-| Calibration slope | 0.5 – 2.0 | GLM, RF, BRT, MaxEnt | FATAL — algorithm excluded |
-| Boyce index | ≥ 0.10 | GLM, RF, BRT, MaxEnt | WARNING if < 0.10; FATAL if < 0.00 |
+| Spatial OOF predictions | Complete and bounded [0,1] for evaluation records | Candidate algorithms | FATAL — algorithm excluded from primary ensemble |
+| AUC (ROC) | ≥ 0.65 | Candidates with valid spatial OOF predictions | FATAL — algorithm excluded from primary ensemble |
+| TSS | ≥ 0.30 | Candidates with valid spatial OOF predictions | FATAL — algorithm excluded from primary ensemble |
+| Minimum ensemble members | ≥ 2 | Primary ensemble | FATAL — production run stops |
+
+MaxEnt is sensitivity-only unless genuine, complete spatial OOF predictions are produced and it passes the same gates.
 
 ## Per-Algorithm Aspirational Targets
 
@@ -28,7 +31,7 @@ Updated: 2026-03-15
 |--------|-----------|-------|
 | Ensemble AUC | ≥ 0.80 | Aspirational; run proceeds even if not met |
 | Ensemble TSS | ≥ 0.50 | Aspirational |
-| Min algorithms in ensemble | ≥ 2 | At least 2 must pass individual gates |
+| Min algorithms in ensemble | ≥ 2 | At least 2 must pass spatial OOF completeness, AUC and TSS gates |
 
 ## Spatial Integrity Targets
 

@@ -1,3 +1,4 @@
+# Repository path discovery helpers.
 current_script_path <- function() {
   cmd_file <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
   if (length(cmd_file) > 0) {

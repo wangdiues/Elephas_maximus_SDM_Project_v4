@@ -46,19 +46,25 @@ evaluate_all_models <- function(run_dir, run_id) {
 
   # Load out-of-fold predictions saved by Phase 7 — avoids data leakage
   oof_file <- file.path(proc_dir, "oof_predictions.csv")
-  oof <- if (file.exists(oof_file)) read.csv(oof_file) else NULL
+  if (!file.exists(oof_file)) stop("Missing required spatial OOF predictions: ", oof_file)
+  oof <- read.csv(oof_file)
+  contract_file <- file.path(model_dir, "ensemble_contract.csv")
+  if (!file.exists(contract_file)) stop("Missing ensemble contract: ", contract_file)
+  ensemble_contract <- read.csv(contract_file, stringsAsFactors = FALSE)
+  included_algorithms <- ensemble_contract$algorithm[ensemble_contract$included]
 
   for (algo in eval_results$algorithm) {
     # Use OOF holdout predictions — never train-set predictions
     oof_col <- paste0("pred_", algo)
-    if (!is.null(oof) && oof_col %in% names(oof)) {
-      valid <- !is.na(oof[[oof_col]])
+    if (oof_col %in% names(oof) && algo %in% included_algorithms) {
+      valid <- is.finite(oof[[oof_col]]) & oof[[oof_col]] >= 0 & oof[[oof_col]] <= 1
+      if (!all(valid)) stop(algo, " does not have complete bounded spatial OOF predictions")
       p   <- as.numeric(oof[[oof_col]][valid])
       y   <- as.numeric(oof$response[valid])
       lon <- as.numeric(oof$longitude[valid])
       lat <- as.numeric(oof$latitude[valid])
     } else {
-      cat(sprintf("  %s: no OOF predictions found, skipping holdout metrics\n", algo))
+      cat(sprintf("  %s: excluded from primary evaluation by ensemble contract\n", algo))
       next
     }
     if (length(p) < 10 || length(unique(p)) < 2) {
@@ -108,6 +114,8 @@ evaluate_all_models <- function(run_dir, run_id) {
   # CRITICAL FIX: Add optimal TSS threshold column
   eval_results$threshold <- sapply(eval_results$algorithm, function(a)
     ifelse(!is.null(threshold_results[[a]]), threshold_results[[a]], NA))
+  eval_results$complete_spatial_oof <- eval_results$algorithm %in% included_algorithms
+  eval_results$included_in_ensemble <- eval_results$algorithm %in% included_algorithms
 
   # T3-A: Enforce schema — ensure run_id column is present
   if (!"run_id" %in% names(eval_results)) {
@@ -204,68 +212,97 @@ evaluate_all_models <- function(run_dir, run_id) {
   calib_combined <- do.call(rbind, calib_data)
   write.csv(calib_combined, file.path(model_dir, "calibration_data.csv"), row.names = FALSE)
 
-  # CRITICAL FIX: Evaluate ensemble predictions (not just individual algorithms)
-  ens_file <- file.path(run_dir, "03_present_suitability", "suitability_present_ensemble.tif")
-  if (file.exists(ens_file)) {
-    cat("  Evaluating ensemble predictions...\n")
-    tryCatch({
-      ens_rast <- terra::rast(ens_file)
-      # Extract ensemble predictions at presence and background locations
-      pres_sf <- st_as_sf(oof[oof$response == 1, ], coords = c("longitude", "latitude"), crs = 4326)
-      bg_sf   <- st_as_sf(oof[oof$response == 0, ], coords = c("longitude", "latitude"), crs = 4326)
-      # Safe CRS extraction: authority field may be empty on some systems
-      target_epsg <- tryCatch({
-        auth <- terra::crs(ens_rast, describe = TRUE)$authority
-        if (!is.null(auth) && nzchar(auth)) as.integer(gsub(".*:", "", auth)) else 32645L
-      }, error = function(e) 32645L)
-      pres_sf <- st_transform(pres_sf, target_epsg)
-      bg_sf   <- st_transform(bg_sf,   target_epsg)
-      
-      # Extract values
-      ens_pres <- terra::extract(ens_rast, st_coordinates(pres_sf))[,2]
-      ens_bg   <- terra::extract(ens_rast, st_coordinates(bg_sf))[,2]
-      
-      ens_pres <- ens_pres[!is.na(ens_pres)]
-      ens_bg   <- ens_bg[!is.na(ens_bg)]
+  # Evaluate the ensemble from row-wise OOF predictions. Extracting the
+  # full-model raster at training locations is optimistic and is prohibited.
+  if (!"pred_ensemble" %in% names(oof)) stop("OOF table lacks pred_ensemble")
+  ens_all <- as.numeric(oof$pred_ensemble)
+  ens_y <- as.numeric(oof$response)
+  ens_valid <- is.finite(ens_all) & ens_all >= 0 & ens_all <= 1
+  if (!all(ens_valid)) stop("Ensemble OOF predictions are incomplete or outside [0,1]")
+  ens_thr <- tss_best(ens_y, ens_all)
+  ens_boyce <- boyce_continuous(ens_all[ens_y == 1], ens_all)
+  ens_row <- data.frame(
+    run_id = run_id,
+    algorithm = "ensemble",
+    auc_mean = auc_score(ens_y, ens_all),
+    tss_mean = ens_thr["tss"],
+    boyce = ens_boyce$boyce_index,
+    brier = brier_score(ens_y, ens_all),
+    calibration_slope = calculate_calibration_slope(ens_y, ens_all)$slope,
+    moran_i = calculate_moran_i(ens_y - ens_all, oof$longitude, oof$latitude)$I,
+    threshold = ens_thr["threshold"],
+    complete_spatial_oof = TRUE,
+    included_in_ensemble = TRUE,
+    stringsAsFactors = FALSE
+  )
+  eval_results <- eval_results[eval_results$algorithm != "ensemble", , drop = FALSE]
+  eval_results <- rbind(eval_results, ens_row)
 
-      if (length(ens_pres) > 0 && length(ens_bg) > 0) {
-        # Ensemble Boyce
-        ens_boyce <- boyce_continuous(ens_pres, ens_bg)
-        # Ensemble Brier (using all OOF — keep NA mask aligned with response)
-        ens_all_raw <- terra::extract(ens_rast, st_coordinates(st_as_sf(oof, coords = c("longitude", "latitude"), crs = 4326)))[,2]
-        ens_valid <- !is.na(ens_all_raw)
-        ens_all   <- ens_all_raw[ens_valid]
-        ens_y     <- as.numeric(oof$response)[ens_valid]
-        ens_brier <- mean((ens_all - ens_y)^2, na.rm = TRUE)
-        # Ensemble threshold
-        ens_thr <- tss_best(ens_y, ens_all)
-        
-        # Add ensemble row to evaluation
-        ens_row <- data.frame(
-          run_id = run_id,
-          algorithm = "ensemble",
-          auc_mean = auc_score(ens_y, ens_all),
-          tss_mean = ens_thr["tss"],
-          boyce = ens_boyce$boyce_index,
-          brier = ens_brier,
-          calibration_slope = calculate_calibration_slope(ens_y, ens_all)$slope,
-          moran_i = calculate_moran_i(ens_y - ens_all, oof$longitude[ens_valid], oof$latitude[ens_valid])$I,
-          threshold = ens_thr["threshold"],
-          stringsAsFactors = FALSE
-        )
-        eval_results <- rbind(eval_results, ens_row)
-        cat(sprintf("  Ensemble: AUC=%.3f, Boyce=%.3f, Threshold=%.4f\n", 
-                    ens_row$auc_mean, ens_row$boyce, ens_row$threshold))
-      }
-    }, error = function(e) {
-      cat(sprintf("  Ensemble evaluation failed: %s\n", conditionMessage(e)))
-    })
+  # Rewrite canonical outputs after the ensemble row has been added.
+  write.csv(eval_results, file.path(model_dir, "evaluation_all.csv"), row.names = FALSE)
+  write.csv(eval_results, file.path(model_dir, "evaluation_summary.csv"), row.names = FALSE)
+  write.csv(eval_results, file.path(model_dir, "evaluation_complete.csv"), row.names = FALSE)
+
+  metrics_summary <- data.frame(
+    run_id = run_id,
+    algorithm = eval_results$algorithm,
+    auc = eval_results$auc_mean,
+    tss = eval_results$tss_mean,
+    boyce = eval_results$boyce,
+    brier = eval_results$brier,
+    calibration_slope = eval_results$calibration_slope,
+    moran_i = eval_results$moran_i,
+    threshold = eval_results$threshold,
+    stringsAsFactors = FALSE
+  )
+  write.csv(metrics_summary, file.path(model_dir, "metrics_summary.csv"), row.names = FALSE)
+
+  # Fold-level metrics are the basis for uncertainty summaries in Table 1.
+  fold_rows <- list()
+  metric_algorithms <- c(included_algorithms, "ensemble")
+  for (a in metric_algorithms) {
+    p <- oof[[paste0("pred_", a)]]
+    for (k in sort(unique(oof$fold))) {
+      take <- oof$fold == k & is.finite(p)
+      yk <- oof$response[take]
+      pk <- p[take]
+      if (length(unique(yk)) < 2) stop("Fold ", k, " lacks both response classes for ", a)
+      tss <- tss_best(yk, pk)
+      fold_rows[[length(fold_rows) + 1L]] <- data.frame(
+        run_id = run_id, algorithm = a, fold = k,
+        n = length(yk), n_presence = sum(yk == 1), n_reference = sum(yk == 0),
+        auc = auc_score(yk, pk), tss = unname(tss["tss"]),
+        threshold = unname(tss["threshold"]), brier = brier_score(yk, pk),
+        stringsAsFactors = FALSE
+      )
+    }
   }
+  write.csv(do.call(rbind, fold_rows), file.path(model_dir, "fold_metrics.csv"), row.names = FALSE)
 
-  # Governance alias G01 (targets.md §1.8)
-  src_g01 <- file.path(run_dir, "03_present_suitability", "suitability_present_ensemble.tif")
-  dst_g01 <- file.path(run_dir, "03_present_suitability", "present_gcm_ensemble.tif")
-  if (file.exists(src_g01) && !file.exists(dst_g01)) file.copy(src_g01, dst_g01)
+  # Add the spatial OOF ensemble to ROC and calibration source tables.
+  thresholds <- sort(unique(c(0, ens_all, 1)))
+  ens_roc <- data.frame(
+    threshold = thresholds,
+    sensitivity = vapply(thresholds, function(t) {
+      z <- ens_all >= t; sum(z & ens_y == 1) / sum(ens_y == 1)
+    }, numeric(1)),
+    specificity = vapply(thresholds, function(t) {
+      z <- ens_all >= t; sum(!z & ens_y == 0) / sum(ens_y == 0)
+    }, numeric(1)),
+    algorithm = "ensemble"
+  )
+  ens_roc <- ens_roc[order(1 - ens_roc$specificity, ens_roc$sensitivity), ]
+  write.csv(rbind(roc_combined, ens_roc), file.path(model_dir, "roc_curve_data.csv"), row.names = FALSE)
+
+  ens_bins <- cut(ens_all, breaks = seq(0, 1, by = 0.1), include.lowest = TRUE)
+  ens_cal <- data.frame(
+    bin = levels(ens_bins),
+    predicted = as.numeric(tapply(ens_all, ens_bins, mean)),
+    observed = as.numeric(tapply(ens_y, ens_bins, mean)),
+    n = as.integer(tapply(ens_y, ens_bins, length)),
+    algorithm = "ensemble"
+  )
+  write.csv(rbind(calib_combined, ens_cal), file.path(model_dir, "calibration_data.csv"), row.names = FALSE)
 
   cat(sprintf("Phase 8 complete: %d models evaluated with Boyce/Brier/Calibration/Moran\n", nrow(eval_results)))
 

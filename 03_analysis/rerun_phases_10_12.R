@@ -9,7 +9,7 @@
 #   Rscript 03_analysis/rerun_phases_10_12.R [run_dir] [config_path]
 #
 # Defaults:
-#   run_dir     = 04_outputs/ (fixed output root, no per-run subdirectory)
+#   run_dir     = newest immutable run only when production_mode is FALSE
 #   config_path = 00_governance/config.yaml
 # =============================================================================
 
@@ -18,6 +18,10 @@ suppressPackageStartupMessages({ library(terra); library(sf) })
 args        <- commandArgs(trailingOnly = TRUE)
 config_rel  <- if (length(args) >= 2) args[[2]] else "00_governance/config.yaml"
 config_path <- normalizePath(config_rel, winslash = "/", mustWork = FALSE)
+cfg <- yaml::read_yaml(config_path)
+if (isTRUE(cfg$execution$production_mode)) {
+  stop("rerun_phases_10_12.R is disabled in production mode. Start a clean immutable run with run_pipeline.R")
+}
 
 # Resolve repo root relative to this script's location
 script_dir  <- tryCatch(

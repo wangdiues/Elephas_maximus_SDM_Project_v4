@@ -1,29 +1,31 @@
 # Progress Tracker — Elephas maximus SDM Project v4
 
 Study area: Bhutan (national) | Version: 3.0-bhutan-national
-Last updated: 2026-03-15
+Last updated: 2026-10-18
 
 ---
 
 ## Pipeline Phase Status
 
-| Phase | Name | Status | Notes |
-|-------|------|--------|-------|
-| 0 | Config + seed init | READY | Updated for Bhutan |
-| 0b | Governance validation | READY | Governance files created |
-| 1 | Data ingest & harmonise | READY | elephant_PA_data.csv |
-| 2 | Accessible area (M) | READY | bhutan.shp, EPSG:32645 |
-| 3 | Occurrence processing | READY | decimalLon/Lat columns |
-| 4 | Background sampling | READY | n=10,000 |
-| 5 | Background bias | READY | |
-| 6 | Spatial CV | READY | |
-| 7 | Model training | READY | GLM, RF, BRT, MaxEnt |
-| 8 | Model evaluation | READY | AUC, TSS, Boyce, calibration |
-| 9 | Future projections | OPTIONAL | 96 scenarios; ~75 min |
-| 10 | Change metrics | OPTIONAL | depends on Phase 9 |
-| 11 | Uncertainty | OPTIONAL | depends on Phase 9 |
-| 12 | Conservation overlays | READY | PA overlay; settlements/pvt disabled |
-| 13 | Synthesis reporting | READY | study_area_name from config |
+Status legend: **READY** = configured but not necessarily executed; **CODE READY / NOT RUN** = implementation and static checks complete, scientific outputs pending a clean production run; **COMPLETE** = production output validated; **WARNING** or **BLOCKED** = intervention required.
+
+| Phase | Name | Status | Timestamp | Notes |
+|-------|------|--------|-----------|-------|
+| 0 | Config + seed init | READY | 2026-10-18 | Updated for Bhutan |
+| 0b | Governance validation | READY | 2026-10-18 | Governance files created |
+| 1 | Data ingest & harmonise | READY | 2026-10-18 | elephant_PA_data.csv |
+| 2 | Accessible area (M) | READY | 2026-10-18 | bhutan.shp, EPSG:32645 |
+| 3 | Occurrence processing | READY | 2026-10-18 | decimalLon/Lat columns |
+| 4 | Background sampling | READY | 2026-10-18 | n=10,000 |
+| 5 | Background bias | READY | 2026-10-18 | — |
+| 6 | Spatial CV | CODE READY / NOT RUN | 2026-10-18 | Whole-block assignment, composition gates, block-size sensitivity report |
+| 7 | Model training | CODE READY / NOT RUN | 2026-10-18 | Quality-gated equal-weight ensemble; MaxEnt sensitivity-only until valid OOF predictions exist |
+| 8 | Model evaluation | CODE READY / NOT RUN | 2026-10-18 | Spatial OOF metrics and fold-level uncertainty; full-raster training-site evaluation prohibited |
+| 9 | Future projections | CODE READY / NOT RUN | 2026-10-18 | Exactly 96 contracted scenarios; fail-fast completeness |
+| 10 | Change metrics + refugia | CODE READY / NOT RUN | 2026-10-18 | 12 SSP-period summaries; refugia denominator fixed at 96 individual GCM projections |
+| 11 | Uncertainty | CODE READY / NOT RUN | 2026-10-18 | Required when future projections are enabled |
+| 12 | Conservation overlays | READY | 2026-10-18 | PA overlay; settlements/pvt disabled |
+| 13 | Synthesis reporting | CODE READY / NOT RUN | 2026-10-18 | Includes final submission-contract validation |
 
 ---
 
@@ -86,14 +88,14 @@ Last updated: 2026-03-15
 - [ ] Predictor extraction over Bhutan extent completes
 
 ### Gate 3: Phases 7–8
-- [ ] All 4 algorithms train successfully
+- [ ] GLM, RF, and BRT candidate fits complete; MaxEnt sensitivity fit is optional
 - [ ] GLM AUC ≥ 0.65
 - [ ] RF AUC ≥ 0.65
 - [ ] BRT AUC ≥ 0.65
-- [ ] MaxEnt AUC ≥ 0.65
-- [ ] Ensemble created with ≥ 2 members
+- [ ] At least two algorithms also pass TSS ≥ 0.30 with complete spatial OOF predictions
+- [ ] Ensemble created with ≥ 2 eligible members
 
 ### Gate 4: Phases 9–13
-- [ ] Future projections (reduced set first)
+- [ ] All 96 contracted future projections and 12 SSP-period summaries complete
 - [ ] Conservation overlays (PA only; settlements/pvt skipped)
 - [ ] Reports say "Bhutan" throughout

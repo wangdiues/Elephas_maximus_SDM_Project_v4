@@ -1,3 +1,4 @@
+# Legacy diagnostic utility for generating a MaxEnt present raster.
 library(terra)
 
 script_file <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)

@@ -4,6 +4,34 @@ Chronological record of key modelling and governance decisions.
 
 ---
 
+## 2026-10-18: Submission-readiness analytical and publication contracts
+
+**Decision**: Implement the reviewed submission-readiness plan as fail-fast code contracts without running or replacing the current analysis outputs.
+
+**Locked defaults**:
+- Every production run writes to a new `04_outputs/runs/RUN_*` directory and refuses reuse.
+- Production mode requires a clean Git worktree, configuration snapshot, input hashes, and run-specific manifests.
+- Spatial CV uses whole-block deterministic assignment, five folds, a primary 15-km block size, a minimum of 10 presences per fold, and composition-only sensitivity checks at 10–30 km.
+- The primary ensemble uses equal weights among at least two algorithms that have complete spatial OOF predictions and pass the prespecified AUC and TSS gates.
+- MaxEnt remains a full-model sensitivity product but is excluded from primary evaluation and ensembling until genuine governed spatial OOF predictions exist for both presence and reference records.
+- The classification threshold is the TSS optimum from the spatial OOF ensemble; algorithm-specific thresholds are not averaged.
+- Future processing requires exactly 8 GCMs × 4 SSPs × 3 periods = 96 individual projections and 12 SSP-period summaries. Present and future products use the same locked algorithm set and weights.
+- Primary refugia use present-suitable cells retained across the 96 individual GCM projections; core means 96/96 and high stability means at least 72/96.
+- The human-pressure overlay is labelled a potential interaction-exposure index, not conflict risk, unless a fitted and independently validated conflict model is later supplied.
+- Label permutation without complete model refitting is not reported as a null-model test.
+
+**Implementation note**: Code parsing and lightweight contract tests are permitted before analysis. No scientific result is updated until a clean production run passes all gates.
+
+### Model Selection
+
+Candidate algorithms are screened using spatial out-of-fold predictions only. The primary ensemble requires at least two eligible algorithms and uses equal weights by default. MaxEnt remains a sensitivity model unless complete, non-leaking out-of-fold predictions are implemented and pass the same gates.
+
+### Manual Overrides
+
+No manual model inclusion, scenario omission, threshold substitution, or refugia-denominator override is permitted in production mode. Any future exception must be recorded here before execution, justified scientifically, and represented in the run manifest.
+
+---
+
 ## 2026-04-20: Occurrence dataset authority reconciled to elephant_PA_data.csv
 
 **Decision**: Treat `01_data_raw/01_occurrences/elephant_PA_data.csv` as the authoritative operational occurrence input for the repository.

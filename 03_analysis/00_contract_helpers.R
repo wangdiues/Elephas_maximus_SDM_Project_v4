@@ -47,27 +47,40 @@ load_contract_config <- function(config_path = "00_governance/config.yaml") {
 #' @return Absolute path
 resolve_path <- function(path, repo_root = NULL) {
   if (is.na(path) || !nzchar(path)) return(NA_character_)
-  if (grepl("^[A-Za-z]:[/\\\\]", path) || startsWith(path, "/"))
+  # Preserve POSIX absolute paths verbatim when tests or containers invoke
+  # this helper from Windows; normalizePath() would otherwise prepend the
+  # current Windows drive and silently change the path's meaning.
+  if (startsWith(path, "/")) return(gsub("\\\\", "/", path))
+  if (grepl("^[A-Za-z]:[/\\\\]", path))
     return(normalizePath(path, winslash = "/", mustWork = FALSE))
   if (!is.null(repo_root))
     return(normalizePath(file.path(repo_root, path), winslash = "/", mustWork = FALSE))
   normalizePath(path, winslash = "/", mustWork = FALSE)
 }
 
-#' Create output directory structure directly under output_root
-#' @param output_root Fixed output root (e.g. 04_outputs/)
-#' @param run_id Ignored; kept for signature compatibility
+#' Create an immutable per-run output directory structure
+#' @param output_root Runs root (e.g. 04_outputs/runs/)
+#' @param run_id Unique run identifier
+#' @param require_empty Refuse to reuse a pre-existing non-empty run directory
 #' @return List of directory paths
-create_run_structure <- function(output_root, run_id = NULL) {
-  run_dir <- output_root
-  dirs <- c("00_manifest", "01_processed_data", "02_models",
+create_run_structure <- function(output_root, run_id, require_empty = TRUE) {
+  if (is.null(run_id) || !nzchar(run_id) || !grepl("^RUN_[A-Za-z0-9_-]+$", run_id)) {
+    stop("run_id must be a non-empty identifier beginning with RUN_")
+  }
+  dir.create(output_root, recursive = TRUE, showWarnings = FALSE)
+  run_dir <- file.path(output_root, run_id)
+  if (dir.exists(run_dir) && isTRUE(require_empty)) {
+    existing <- list.files(run_dir, all.files = TRUE, no.. = TRUE)
+    if (length(existing) > 0) stop("Refusing to reuse non-empty run directory: ", run_dir)
+  }
+  dirs <- c("00_manifest", "01_processed_data", "02_data_intermediate", "02_models",
             "03_present_suitability", "04_future_projections",
             "05_change_metrics", "06_uncertainty", "07_overlays",
             "08_figures_tables", "09_reports")
   for (d in dirs) dir.create(file.path(run_dir, d), recursive = TRUE, showWarnings = FALSE)
   setNames(
     as.list(file.path(run_dir, c("", dirs))),
-    c("run_dir", "manifest_dir", "processed_dir", "model_dir", "present_dir",
+    c("run_dir", "manifest_dir", "processed_dir", "intermediate_dir", "model_dir", "present_dir",
       "future_dir", "change_dir", "uncertainty_dir", "overlay_dir",
       "figure_dir", "report_dir")
   )
@@ -128,21 +141,17 @@ list_run_dirs <- function(repo_root, cfg = NULL) {
   out[order(file.info(out)$mtime, decreasing = TRUE)]
 }
 
-#' Return the fixed output root (04_outputs/) — no per-run subdirectory
+#' Return the newest immutable run directory
 #' @param repo_root Repository root
 #' @param cfg Optional loaded config
 #' @return Absolute path to the output root directory
 find_latest_run_dir <- function(repo_root, cfg = NULL) {
-  paths <- if (!is.null(cfg) && !is.null(cfg$paths)) cfg$paths else list()
-  outputs_root <- normalizePath(
-    file.path(repo_root, paths$outputs_root %||% "04_outputs"),
-    winslash = "/", mustWork = FALSE
-  )
-  if (!dir.exists(outputs_root)) dir.create(outputs_root, recursive = TRUE, showWarnings = FALSE)
-  outputs_root
+  runs <- list_run_dirs(repo_root, cfg)
+  if (length(runs) == 0) stop("No immutable RUN_* directory found")
+  runs[[1]]
 }
 
-#' Resolve a run directory: checks legacy RUN_* dirs first, then returns fixed output root
+#' Resolve an immutable run directory by exact run ID
 #' @param repo_root Repository root
 #' @param cfg Optional loaded config
 #' @param run_id Run identifier (used only for legacy RUN_* lookup)
@@ -155,8 +164,7 @@ locate_run_dir <- function(repo_root, cfg = NULL, run_id) {
     legacy_candidate <- file.path(root, "runs", run_id)
     if (dir.exists(legacy_candidate)) return(legacy_candidate)
   }
-  # New style: fixed output root (no per-run subdirectory)
-  find_latest_run_dir(repo_root, cfg)
+  stop("Run directory not found for run_id: ", run_id)
 }
 
 # =============================================================================

@@ -52,7 +52,7 @@ The pipeline will:
 1. Validate all inputs
 2. Process occurrence data
 3. Build predictor stack
-4. Train models (GLM, RF, BRT, MaxEnt)
+4. Train candidate models; build the primary ensemble only from algorithms that pass the spatial-OOF contract
 5. Evaluate models
 6. Generate future projections
 7. Create all figures
@@ -64,7 +64,7 @@ The pipeline will:
 
 Results are saved to:
 ```
-04_outputs/RUN_YYYYMMDD_HHMMSS_<id>/
+04_outputs/runs/RUN_YYYYMMDD_HHMMSS_<id>/
 ├── 00_manifest/
 ├── 01_processed_data/
 ├── 02_models/

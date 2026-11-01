@@ -118,8 +118,8 @@ test_that("00_contract_helpers.R does NOT duplicate SDM-owned functions", {
   for (fn in sdm_owned) {
     pattern <- paste0("^\\s*", fn, "\\s*<-\\s*function\\s*\\(")
     dups <- grep(pattern, contract_lines)
-    expect_length(dups, 0,
-                  info = paste(fn, "is defined in 00_contract_helpers.R but belongs in 00_sdm_helpers.R"))
+    expect_equal(length(dups), 0,
+                 info = paste(fn, "is defined in 00_contract_helpers.R but belongs in 00_sdm_helpers.R"))
   }
 })
 
@@ -178,8 +178,8 @@ test_that("baseline climate glob resolves to at least 19 BIO rasters", {
   glob_pattern <- file.path(repo_root, cfg$predictors$baseline_climate_glob)
   bio_files <- Sys.glob(glob_pattern)
 
-  expect_gte(length(bio_files), 19,
-             info = paste("Found only", length(bio_files), "BIO files"))
+  expect_true(length(bio_files) >= 19,
+              info = paste("Found only", length(bio_files), "BIO files"))
 
   # All should be .tif
   expect_true(all(grepl("\\.tif$", bio_files, ignore.case = TRUE)),

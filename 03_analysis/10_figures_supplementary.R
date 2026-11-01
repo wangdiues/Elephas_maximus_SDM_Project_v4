@@ -6,7 +6,7 @@
 # Figures generated (S1, S3–S16):
 #   figure_s01_suitability_5panel.png        S1   Suitability by algorithm + ensemble
 #   figure_s03_cv_fold_performance.png       S3   Per-fold AUC & TSS
-#   figure_s04_null_model_comparison.png     S4   Permuted vs observed AUC (null model)
+#   S4 is intentionally omitted unless every permutation refits the full workflow
 #   figure_s05_residual_correlogram.png      S5   Spatial autocorrelation of OOF residuals
 #   figure_s06_predictor_collinearity.png    S6   Predictor collinearity heatmap
 #   figure_s07_threshold_sensitivity.png     S7   % suitable habitat vs threshold
@@ -34,6 +34,9 @@ suppressPackageStartupMessages({
   library(ggplot2)
   if (requireNamespace("scales", quietly = TRUE)) library(scales)
 })
+if (!exists("get_oof_ensemble_threshold", mode = "function")) {
+  source(file.path("03_analysis", "00_publication_helpers.R"))
+}
 
 if (!exists("create_supplementary_figures", mode = "function")) {
 
@@ -156,6 +159,11 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
   dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
 
   n <- 0L
+  ensemble_contract_file <- file.path(mod_dir, "ensemble_contract.csv")
+  if (!file.exists(ensemble_contract_file)) stop("ensemble_contract.csv is required for supplementary figures")
+  ensemble_contract <- read.csv(ensemble_contract_file, stringsAsFactors = FALSE)
+  included_algorithms <- tolower(ensemble_contract$algorithm[ensemble_contract$included %in% TRUE])
+  if (length(included_algorithms) < 2L) stop("At least two contracted ensemble members are required")
   cat("\n=== Supplementary figures (S1, S3\u2013S16) ===\n")
 
   has_patchwork <- requireNamespace("patchwork", quietly = TRUE)
@@ -231,11 +239,11 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
     if (is.finite(tv)) tv else 0.5
   }
 
-  # ── S1: Suitability by algorithm — 5-panel (GLM/RF/BRT/MaxEnt + Ensemble) ───
+  # ── S1: Suitability maps for eligible primary ensemble members ───────────────
   tryCatch({
     pres_dir <- file.path(run_dir, "03_present_suitability")
-    algos    <- c("glm", "rf", "brt", "maxent")
-    labels   <- c("GLM", "RF", "BRT", "MaxEnt")
+    algos    <- included_algorithms
+    labels   <- toupper(algos)
     panels   <- list()
 
     for (i in seq_along(algos)) {
@@ -267,7 +275,8 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
     out <- patchwork::wrap_plots(panels, ncol = 2) +
       patchwork::plot_annotation(
         title    = "Present Habitat Suitability by Algorithm \u2014 Elephas maximus | Bhutan",
-        subtitle = "Ensemble components: GLM, Random Forest, Boosted Regression Trees, MaxEnt",
+        subtitle = paste("Eligible spatial-OOF ensemble members:", paste(toupper(included_algorithms), collapse = ", "),
+                         "| MaxEnt is included only if it passes the same gates"),
         tag_levels = "A"
       )
 
@@ -282,7 +291,7 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
     if (!file.exists(oof_file)) stop("oof_predictions.csv not found")
     oof <- read.csv(oof_file)
 
-    pred_cols <- intersect(paste0("pred_", c("glm", "rf", "brt", "maxent")), names(oof))
+    pred_cols <- intersect(paste0("pred_", included_algorithms), names(oof))
     if (length(pred_cols) == 0 || !"fold" %in% names(oof))
       stop("OOF data missing fold or prediction columns")
 
@@ -379,97 +388,8 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
     n <- n + 1L
   }, error = function(e) cat(sprintf("  S3 skipped: %s\n", e$message)))
 
-  # ── S4: Null model comparison (permuted vs observed AUC) ─────────────────────
-  tryCatch({
-    oof_file <- file.path(proc_dir, "oof_predictions.csv")
-    if (!file.exists(oof_file)) stop("oof_predictions.csv not found")
-    oof <- read.csv(oof_file)
-
-    pred_cols <- intersect(paste0("pred_", c("glm", "rf", "brt", "maxent")), names(oof))
-    if (length(pred_cols) == 0) stop("no prediction columns in OOF data")
-
-    set.seed(42L)
-    n_perm    <- 99L
-    null_list <- list()
-
-    for (pc in pred_cols) {
-      algo <- sub("pred_", "", pc)
-      ok   <- !is.na(oof[[pc]]) & !is.na(oof$response)
-      y    <- as.numeric(oof$response[ok])
-      p    <- as.numeric(oof[[pc]][ok])
-
-      obs_auc   <- .auc_fn(y, p)
-      null_aucs <- vapply(seq_len(n_perm), function(i) .auc_fn(sample(y), p), numeric(1))
-
-        # Empirical p-value: proportion of null AUCs >= observed
-      emp_p <- mean(null_aucs >= obs_auc)
-      null_list[[length(null_list) + 1]] <- data.frame(
-        algorithm = toupper(algo),
-        obs_auc   = obs_auc,
-        emp_p     = emp_p,
-        null_auc  = null_aucs,
-        stringsAsFactors = FALSE
-      )
-    }
-
-    if (length(null_list) == 0) stop("null model computation failed for all algorithms")
-    null_df <- do.call(rbind, null_list)
-    null_df$algorithm <- factor(null_df$algorithm, levels = c("GLM", "RF", "BRT", "MAXENT"))
-
-    obs_df <- unique(null_df[, c("algorithm", "obs_auc", "emp_p")])
-
-    # 95th percentile of null AUC per algorithm (for dashed reference line)
-    null_p95 <- aggregate(null_auc ~ algorithm, data = null_df,
-                          FUN = function(x) quantile(x, 0.95))
-    names(null_p95)[2] <- "null_p95"
-    obs_df <- merge(obs_df, null_p95, by = "algorithm")
-
-    obs_df$label_text <- sprintf("Observed AUC = %.3f\np < %.3f", obs_df$obs_auc,
-                                  pmax(obs_df$emp_p, 1 / (n_perm + 1)))
-
-    # X-axis: span null distribution + observed AUC with padding
-    x_min <- floor(min(null_df$null_auc, na.rm = TRUE) * 10) / 10 - 0.02
-    x_max <- max(obs_df$obs_auc) + 0.04
-
-    p <- ggplot(null_df, aes(x = null_auc, fill = algorithm)) +
-      geom_histogram(bins = 20, alpha = 0.75, colour = "white", linewidth = 0.15) +
-      # Dashed line at null 95th percentile
-      geom_vline(data = obs_df, aes(xintercept = null_p95),
-                 linewidth = 0.7, linetype = "dashed", colour = "grey40") +
-      # Solid line at observed AUC
-      geom_vline(data = obs_df, aes(xintercept = obs_auc, colour = algorithm),
-                 linewidth = 1.3, linetype = "solid") +
-      # Label to LEFT of the observed vline
-      geom_label(data = obs_df,
-                 aes(x = obs_auc, y = Inf,
-                     label = label_text,
-                     colour = algorithm),
-                 fill = "white", vjust = 1.15, hjust = 1.08, size = 3.0,
-                 fontface = "bold", linewidth = 0.3, inherit.aes = FALSE) +
-      scale_fill_manual(values   = algo_pal, guide = "none") +
-      scale_colour_manual(values = algo_pal, guide = "none") +
-      scale_x_continuous(limits = c(x_min, x_max),
-                         expand = expansion(mult = c(0, 0.01))) +
-      facet_wrap(~algorithm, scales = "free_y", ncol = 2) +
-      labs(
-        title    = "Null model comparison \u2014 Elephas maximus SDM (Bhutan)",
-        subtitle = sprintf(
-          "Histogram = AUC of %d label-permuted null models | Solid line = observed AUC | Dashed = null 95th pct",
-          n_perm),
-        x = "AUC", y = "Count (permutations)"
-      ) +
-      theme_bw(base_size = 11) +
-      theme(
-        strip.background = element_rect(fill = "grey92"),
-        strip.text       = element_text(face = "bold"),
-        plot.title       = element_text(face = "bold"),
-        panel.grid.minor = element_blank()
-      )
-
-    .supp_save_fig(p, file.path(fig_dir, "figure_s04_null_model_comparison.png"), 10, 7)
-    cat("  + figure_s04_null_model_comparison.png\n")
-    n <- n + 1L
-  }, error = function(e) cat(sprintf("  S4 skipped: %s\n", e$message)))
+  # S4 intentionally omitted. Label permutation without refitting the complete
+  # spatial modelling workflow is not a valid null-model test.
 
   # ── S5: Spatial autocorrelation of OOF residuals (correlogram) ───────────────
   tryCatch({
@@ -477,13 +397,12 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
     if (!file.exists(oof_file)) stop("oof_predictions.csv not found")
     oof <- read.csv(oof_file)
 
-    pred_cols <- intersect(paste0("pred_", c("glm", "rf", "brt", "maxent")), names(oof))
-    if (length(pred_cols) == 0) stop("no prediction columns")
+    if (!"pred_ensemble" %in% names(oof)) stop("locked spatial-OOF ensemble predictions are missing")
     if (!all(c("longitude", "latitude", "response") %in% names(oof)))
       stop("OOF data missing spatial coordinate columns")
 
-    # Ensemble prediction = row mean; compute residuals
-    oof$pred_ens <- rowMeans(oof[, pred_cols, drop = FALSE], na.rm = TRUE)
+    # Use the same locked weighted ensemble prediction used in evaluation.
+    oof$pred_ens <- oof$pred_ensemble
     ok <- !is.na(oof$pred_ens) & !is.na(oof$response)
     oof <- oof[ok, ]
     oof$residual <- as.numeric(oof$response) - oof$pred_ens
@@ -540,7 +459,7 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
       labs(
         title    = "Spatial autocorrelation of model residuals \u2014 Elephas maximus SDM (Bhutan)",
         subtitle = paste0(
-          "Ensemble (mean of GLM/RF/BRT/MaxEnt) | Lag bins = ", bin_w, " km | ",
+          "Locked spatial-OOF ensemble | Lag bins = ", bin_w, " km | ",
           "n = ", nrow(oof), " OOF predictions"),
         x = "Lag distance (km)",
         y = "Moran\u2019s I (residual spatial correlation)"
@@ -635,10 +554,7 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
                          numeric(1))
 
     # TSS-optimal threshold
-    curr_thr <- if (!is.null(eval_df) && "threshold" %in% names(eval_df)) {
-      tv <- mean(eval_df$threshold[eval_df$algorithm != "ensemble"], na.rm = TRUE)
-      if (is.finite(tv)) tv else 0.5
-    } else 0.5
+    curr_thr <- get_oof_ensemble_threshold(eval_df)
 
     curr_pct <- approx(thresholds, pct_suit, xout = curr_thr)$y
 
@@ -1565,10 +1481,7 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
     pix_km2 <- prod(res(suit)) / 1e6
 
     # Ensemble threshold
-    ens_thr <- if (!is.null(eval_df) && "threshold" %in% names(eval_df)) {
-      tv <- mean(eval_df$threshold, na.rm = TRUE)
-      if (is.finite(tv)) tv else 0.5
-    } else 0.5
+    ens_thr <- get_oof_ensemble_threshold(eval_df)
 
     # The shapefile has wrong CRS metadata (labelled 32645 but coords are EPSG:3857)
     dzo_v_raw <- tryCatch(vect(dzo), error = function(e) NULL)
@@ -1668,47 +1581,19 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
   # ── S18: Climate refugia map ───────────────────────────────────────────────────
   tryCatch({
     chg_dir  <- file.path(run_dir, "05_change_metrics")
-    pres_ens <- file.path(run_dir, "03_present_suitability",
-                          "suitability_present_ensemble.tif")
-    if (!file.exists(pres_ens)) stop("ensemble suitability raster not found")
-
-    persist_files <- list.files(chg_dir,
-      pattern = "^persistence_ensemble_.*\\.tif$", full.names = TRUE)
-    if (length(persist_files) == 0) stop("no persistence rasters found in 05_change_metrics")
-
-    # Load all persistence rasters and align to first
-    pers_list <- lapply(persist_files, function(f) {
-      tryCatch({ r <- rast(f); if (nlyr(r) > 1) r[[1]] else r }, error = function(e) NULL)
-    })
-    pers_list <- Filter(Negate(is.null), pers_list)
-    if (length(pers_list) == 0) stop("could not load any persistence rasters")
-
-    ref_p <- pers_list[[1]]
-    pers_list <- lapply(pers_list, function(r) {
-      if (!isTRUE(crs(r) == crs(ref_p))) r <- project(r, ref_p, method = "near")
-      r
-    })
-    n_scen <- length(pers_list)
-
-    # Stability score: count of scenarios where cell remains suitable
-    stab_r <- app(rast(pers_list), fun = function(v) sum(v, na.rm = TRUE))
-
-    # Core refugia: suitable in ALL scenarios
-    core_r <- stab_r
-    core_r[stab_r < n_scen] <- NA
-    core_r[!is.na(core_r)]  <- 1L
-
-    # Mask to present suitable area
-    suit_r <- rast(pres_ens)
-    if (nlyr(suit_r) > 1) suit_r <- suit_r[[1]]
-    suit_r <- tryCatch(project(suit_r, ref_p, method = "bilinear"),
-                       error = function(e) suit_r)
-
-    # Save rasters for T23 to pick up
-    ref_out  <- file.path(run_dir, "03_present_suitability", "refugia_core.tif")
-    stab_out <- file.path(run_dir, "03_present_suitability", "refugia_stability.tif")
-    tryCatch(writeRaster(core_r,  ref_out,  overwrite = TRUE), error = function(e) NULL)
-    tryCatch(writeRaster(stab_r, stab_out, overwrite = TRUE), error = function(e) NULL)
+    count_file <- file.path(chg_dir, "refugia_stability_count.tif")
+    frac_file <- file.path(chg_dir, "refugia_stability_fraction.tif")
+    contract_file <- file.path(chg_dir, "refugia_contract.csv")
+    if (!all(file.exists(c(count_file, frac_file, contract_file)))) {
+      stop("validated refugia outputs or contract are missing")
+    }
+    contract <- read.csv(contract_file, stringsAsFactors = FALSE)
+    if (nrow(contract) != 1 || contract$denominator_n[[1]] != 96 ||
+        contract$denominator_type[[1]] != "individual GCM projections") {
+      stop("S18 requires the contracted 96 individual-GCM denominator")
+    }
+    stab_r <- rast(count_file)
+    n_scen <- as.integer(contract$denominator_n[[1]])
 
     # AOI mask
     if (!is.null(aoi_v)) {
@@ -1726,34 +1611,35 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
     map_ylim2 <- c(ref_ext2$ymin - buf2, ref_ext2$ymax + buf2)
 
     # Stats
-    cell_km2   <- prod(res(stab_r)) / 1e6
     n_total    <- sum(!is.na(values(stab_r)))
-    n_core     <- sum(stab_df$n_stable == n_scen, na.rm = TRUE)
-    n_partial  <- sum(stab_df$n_stable >= ceiling(n_scen * 0.75), na.rm = TRUE)
+    n_core     <- sum(stab_df$n_stable == contract$core_minimum[[1]], na.rm = TRUE)
+    n_partial  <- sum(stab_df$n_stable >= contract$high_stability_minimum[[1]], na.rm = TRUE)
     pct_core   <- round(100 * n_core   / n_total, 1)
     pct_part   <- round(100 * n_partial / n_total, 1)
 
     # 5 stability classes — clean single-line labels, no \n
     cls_labels <- c(
-      "Never suitable",
+      "No future retention",
       "Low stability (<25%)",
       "Moderate (25\u201350%)",
       "High stability (50\u201375%)",
-      "Core refugia (>75%)"
+      "Very high stability (75\u2013<100%)",
+      "Core refugia (100%)"
     )
     stab_df$class <- cut(stab_df$n_stable,
-      breaks = c(-Inf, 0, ceiling(n_scen*0.25), ceiling(n_scen*0.50),
-                 ceiling(n_scen*0.75), n_scen),
+      breaks = c(-Inf, 0, floor(n_scen*0.25), floor(n_scen*0.50),
+                 floor(n_scen*0.75), n_scen - 1, Inf),
       labels = cls_labels,
       include.lowest = TRUE, right = TRUE)
 
     # "Never suitable" = mid-grey; use a 5-step sequential palette with clear steps
     pal_ref <- c(
-      "Never suitable"               = "#c8c8c8",
+      "No future retention"           = "#c8c8c8",
       "Low stability (<25%)"         = "#fdbb84",  # deeper peach (was #fdd49e too pale)
       "Moderate (25\u201350%)"       = "#e34a33",  # stronger orange-red
       "High stability (50\u201375%)" = "#b30000",
-      "Core refugia (>75%)"          = "#4d0000"   # very dark red
+      "Very high stability (75\u2013<100%)" = "#7a0177",
+      "Core refugia (100%)"          = "#4d0000"   # very dark red
     )
 
     p <- ggplot() +
@@ -1763,14 +1649,14 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
       .boundary_geoms(crs(stab_r), with_dzong = TRUE) +
       annotate("label", x = Inf, y = Inf,
                label = sprintf(
-                 "Core refugia (>75%% scenarios): %.1f%%\nHigh+Core (>50%%): %.1f%%\nn = %d scenarios",
+                 "Core (96/96): %.1f%% of present-suitable area\nHigh+Core (\u226572/96): %.1f%%\nn = %d GCM projections",
                  pct_core, pct_part, n_scen),
                hjust = 1.02, vjust = 1.05, size = 3.2, fill = "white", alpha = 0.92,
                linewidth = 0.3) +
       labs(
         title    = "Climate refugia \u2014 Elephas maximus SDM (Bhutan)",
         subtitle = sprintf(
-          "Stability = fraction of %d future scenarios (4 SSPs \u00d7 3 periods) where habitat remains suitable",
+          "Stability = fraction of %d individual GCM projections; cells are restricted to present-suitable habitat",
           n_scen),
         x = NULL, y = NULL
       ) +
@@ -1824,14 +1710,14 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
     }
   }, error = function(e) cat(sprintf("  S19 skipped: %s\n", e$message)))
 
-  # ── S20: Future conflict risk trajectory ──────────────────────────────────
+  # ── S20: Future potential interaction-exposure trajectory ────────────────
   tryCatch({
-    cat("S20: Future conflict risk...\n")
-    cr_file <- file.path(fig_dir, "table_conflict_risk_summary.csv")
+    cat("S20: Future potential interaction exposure...\n")
+    cr_file <- file.path(fig_dir, "table_interaction_exposure_summary.csv")
     if (file.exists(cr_file)) {
       cr_df <- read.csv(cr_file, stringsAsFactors = FALSE)
       # Present baseline as horizontal reference
-      baseline_risk <- cr_df$Mean_conflict_risk[cr_df$SSP == "Present"]
+      baseline_risk <- cr_df$Mean_interaction_exposure[cr_df$SSP == "Present"]
       fut_df <- cr_df[cr_df$SSP != "Present", ]
       # Normalise SSP labels
       fut_df$SSP <- sub("SSP126","SSP1-2.6",
@@ -1840,7 +1726,7 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
                    sub("SSP585","SSP5-8.5", fut_df$SSP))))
       fut_df$Period <- factor(fut_df$Period,
                               levels = c("2021-2050","2051-2080","2071-2100"))
-      p <- ggplot(fut_df, aes(x = Period, y = Mean_conflict_risk,
+      p <- ggplot(fut_df, aes(x = Period, y = Mean_interaction_exposure,
                                colour = SSP, group = SSP)) +
         geom_hline(yintercept = baseline_risk, linetype = "dashed",
                    colour = "grey40", linewidth = 0.8) +
@@ -1853,14 +1739,16 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
                                        "SSP3-7.0"="#f46d43","SSP5-8.5"="#d73027"),
                             name = "Emission scenario") +
         scale_y_continuous(labels = scales::label_number(accuracy = 0.001)) +
-        labs(title    = "Projected Mean Conflict Risk Index",
-             subtitle = "Dashed line = present-day baseline (0.103)",
-             x = "Time period", y = "Mean conflict risk index") +
+        labs(title    = "Projected Mean Potential Interaction Exposure",
+             subtitle = if (length(baseline_risk) == 1 && is.finite(baseline_risk))
+               sprintf("Dashed line = present-day baseline (%.3f)", baseline_risk) else
+               "Dashed line = present-day baseline",
+             x = "Time period", y = "Mean interaction exposure index") +
         theme_bw() +
         theme(legend.position  = "bottom",
               plot.title       = element_text(face = "bold"))
-      .supp_save_fig(p, file.path(fig_dir, "figure_s20_conflict_risk_trajectory.png"), 8, 5)
-      cat("  + figure_s20_conflict_risk_trajectory.png\n")
+      .supp_save_fig(p, file.path(fig_dir, "figure_s20_interaction_exposure_trajectory.png"), 8, 5)
+      cat("  + figure_s20_interaction_exposure_trajectory.png\n")
       n <- n + 1L
     }
   }, error = function(e) cat(sprintf("  S20 skipped: %s\n", e$message)))

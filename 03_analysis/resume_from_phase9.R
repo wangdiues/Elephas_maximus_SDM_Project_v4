@@ -13,6 +13,9 @@ config_rel <- "00_governance/config.yaml"
 if (!file.exists(config_rel)) stop("Config not found: ", config_rel)
 
 cfg <- yaml::read_yaml(config_rel)
+if (isTRUE(cfg$execution$production_mode)) {
+  stop("resume_from_phase9.R is disabled in production mode. Start a clean immutable run with run_pipeline.R")
+}
 repo_root <- cfg$paths$repo_root
 if (is.null(repo_root) || !nzchar(repo_root)) repo_root <- "."
 repo_root <- normalizePath(repo_root, winslash = "/", mustWork = FALSE)
