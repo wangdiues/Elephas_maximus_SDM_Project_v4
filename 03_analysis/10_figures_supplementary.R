@@ -1731,7 +1731,7 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
                                colour = SSP, group = SSP)) +
         geom_hline(yintercept = baseline_risk, linetype = "dashed",
                    colour = "grey40", linewidth = 0.8) +
-        annotate("text", x = 1, y = baseline_risk + 0.001,
+        annotate("text", x = levels(fut_df$Period)[1], y = baseline_risk + 0.001,
                  label = sprintf("Present (%.3f)", baseline_risk),
                  hjust = 0, size = 3, colour = "grey40") +
         geom_line(linewidth = 0.9) +

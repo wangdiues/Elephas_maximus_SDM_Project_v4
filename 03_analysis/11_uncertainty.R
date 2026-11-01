@@ -45,6 +45,10 @@ compute_uncertainty <- function(run_dir) {
   idx <- do.call(rbind, lapply(fmaps, parse))
   idx <- idx[!is.na(idx$ssp), , drop = FALSE]
   
+  ev <- read.csv(file.path(run_dir, "02_models", "evaluation_all.csv"), stringsAsFactors = FALSE)
+  thr <- ev$threshold[ev$algorithm == "ensemble"][1]
+  if (!is.finite(thr)) stop("ensemble threshold missing from evaluation_all.csv")
+
   groups <- unique(idx[, c("ssp", "period")])
   out_idx <- data.frame()
   
@@ -53,25 +57,15 @@ compute_uncertainty <- function(run_dir) {
     sub <- idx[idx$ssp == s & idx$period == p, , drop = FALSE]
     if (nrow(sub) < 2) next
     
-    cat(sprintf("Processing %s_%s (%d GCMs)...\n", s, p, nrow(sub)))
+    cat(sprintf("Processing %s_%s (%d GCMs)...\n", s, p, sum(sub$algo == "ensemble")))
     
-    # Mean across algorithms by GCM, then SD across GCMs
-    gcm_mean <- list()
-    for (g in unique(sub$gcm)) {
-      tryCatch({
-        sg <- sub[sub$gcm == g, , drop = FALSE]
-        rg <- lapply(sg$path, function(f) {
-          tryCatch(align_raster(rast(f), rast(sg$path[1]), verbose = FALSE),
-                   error = function(e) { cat(sprintf("  Skip %s: %s\n", basename(f), conditionMessage(e))); NULL })
-        })
-        rg <- rg[!sapply(rg, is.null)]
-        if (length(rg) > 0) gcm_mean[[g]] <- app(rast(rg), function(v) mean(v, na.rm = TRUE))
-      }, error = function(eg) cat(sprintf("  GCM %s failed: %s\n", g, conditionMessage(eg))))
-      gc(verbose = FALSE)
-    }
+    # Each GCM's equal-weight ensemble projection; SD across GCMs
+    ens <- sub[sub$algo == "ensemble", , drop = FALSE]
+    gcm_mean <- lapply(ens$path, function(f) align_raster(rast(f), rast(ens$path[1]), verbose = FALSE))
+    names(gcm_mean) <- ens$gcm
     if (length(gcm_mean) < 1) next
     if (length(gcm_mean) >= 2) {
-      gcm_sd <- app(rast(gcm_mean), function(v) sd(v, na.rm = TRUE))
+      gcm_sd <- app(rast(gcm_mean), function(v) if (all(is.na(v))) NA_real_ else sd(v, na.rm = TRUE))
     } else {
       gcm_sd <- gcm_mean[[1]] * 0
     }
@@ -82,7 +76,7 @@ compute_uncertainty <- function(run_dir) {
 
     # Mean across GCMs by algorithm, then SD across algorithms
     algo_mean <- list()
-    for (a in unique(sub$algo)) {
+    for (a in setdiff(unique(sub$algo), "ensemble")) {
       tryCatch({
         sa <- sub[sub$algo == a, , drop = FALSE]
         ra <- lapply(sa$path, function(f) {
@@ -95,7 +89,7 @@ compute_uncertainty <- function(run_dir) {
       gc(verbose = FALSE)
     }
     if (length(algo_mean) >= 2) {
-      algo_sd <- app(rast(algo_mean), function(v) sd(v, na.rm = TRUE))
+      algo_sd <- app(rast(algo_mean), function(v) if (all(is.na(v))) NA_real_ else sd(v, na.rm = TRUE))
     } else {
       algo_sd <- gcm_sd * 0
     }
@@ -113,8 +107,8 @@ compute_uncertainty <- function(run_dir) {
     if (file.exists(present_file)) {
       present <- align_raster(rast(present_file), gcm_mean[[1]], verbose = FALSE)
       gm <- rast(gcm_mean)
-      gain_stack <- lapply(1:nlyr(gm), function(j) (present < 0.5) & (gm[[j]] >= 0.5))
-      loss_stack <- lapply(1:nlyr(gm), function(j) (present >= 0.5) & (gm[[j]] < 0.5))
+      gain_stack <- lapply(1:nlyr(gm), function(j) (present < thr) & (gm[[j]] >= thr))
+      loss_stack <- lapply(1:nlyr(gm), function(j) (present >= thr) & (gm[[j]] < thr))
       agreement_gain <- app(rast(gain_stack), function(v) mean(v, na.rm = TRUE))
       agreement_loss <- app(rast(loss_stack), function(v) mean(v, na.rm = TRUE))
       out_gain <- file.path(out_dir, paste0("agreement_gain_", tolower(s), "_", gsub("-", "_", p), ".tif"))

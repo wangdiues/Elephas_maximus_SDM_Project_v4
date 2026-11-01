@@ -126,19 +126,12 @@ generate_publication_tables <- function(run_dir, config_path = NULL) {
     keep <- c(contract$algorithm[contract$included], "ensemble")
     ms <- ms[ms$algorithm %in% keep, , drop = FALSE]
     folds <- read.csv(file.path(mod_dir, "fold_metrics.csv"), stringsAsFactors = FALSE)
-    fold_summary <- aggregate(cbind(auc, tss, brier) ~ algorithm, folds,
-                              function(z) c(mean = mean(z), sd = stats::sd(z)))
-    unpack <- function(x, metric) {
-      m <- do.call(rbind, x)
-      data.frame(algorithm = fold_summary$algorithm,
-                 setNames(list(m[, "mean"]), paste0(metric, "_fold_mean")),
-                 setNames(list(m[, "sd"]), paste0(metric, "_fold_sd")),
-                 check.names = FALSE)
-    }
-    fs <- Reduce(function(x, y) merge(x, y, by = "algorithm", all = TRUE),
-                 list(unpack(fold_summary$auc, "auc"),
-                      unpack(fold_summary$tss, "tss"),
-                      unpack(fold_summary$brier, "brier")))
+    fs <- do.call(rbind, lapply(split(folds, folds$algorithm), function(d) {
+      data.frame(algorithm = d$algorithm[1],
+                 auc_fold_mean = mean(d$auc), auc_fold_sd = stats::sd(d$auc),
+                 tss_fold_mean = mean(d$tss), tss_fold_sd = stats::sd(d$tss),
+                 brier_fold_mean = mean(d$brier), brier_fold_sd = stats::sd(d$brier))
+    }))
     t1 <- merge(ms, fs, by = "algorithm", all.x = TRUE)
     t1 <- data.frame(
       Algorithm = toupper(t1$algorithm),
@@ -148,6 +141,7 @@ generate_publication_tables <- function(run_dir, config_path = NULL) {
       TSS_fold_SD = round(t1$tss_fold_sd, 3),
       Brier_fold_mean = round(t1$brier_fold_mean, 3),
       Brier_fold_SD = round(t1$brier_fold_sd, 3),
+      Boyce = round(t1$boyce, 3),
       Calibration_slope = round(t1$calibration_slope, 3),
       Morans_I = round(t1$moran_i, 3),
       OOF_threshold = round(t1$threshold, 4),

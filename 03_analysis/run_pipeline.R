@@ -246,9 +246,10 @@ validate_required_reports <- function(report_dir) {
 validate_required_figures <- function(fig_dir, require_future = FALSE, 
                                        has_change_metrics = FALSE,
                                        has_future_projections = FALSE) {
-  # Note: figure_03_future.png, figure_08_uncertainty.png, figure_07_change.png are
-  # intentionally suppressed in create_all_figures() and must NOT be in the required list.
-  
+  # figure_03_future.png, figure_04_change.png, figure_07_change.png and
+  # figure_08_uncertainty.png are not written by create_all_figures(); the
+  # manuscript figures come from 16_submission_figures.R.
+
   # Core figures (always required - present suitability + model evaluation)
   required <- c(
     "figure_01_present_suitability.png",
@@ -260,8 +261,8 @@ validate_required_figures <- function(fig_dir, require_future = FALSE,
   # Future/change figures (only required if Phase 9 succeeded)
   if (isTRUE(require_future) && isTRUE(has_future_projections)) {
     required <- c(required, c(
-      "figure_03_future.png",
-      "figure_04_change.png"
+      "figure_11_trajectories.png",
+      "figure_r05_change_map.png"
     ))
   }
   
