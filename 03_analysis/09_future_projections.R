@@ -206,6 +206,13 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
   }
   cfg <- yaml::read_yaml(config_path)
   expected_n <- as.integer(cfg$climate_projections$expected_gcm_scenarios %||% 96L)
+  flt <- filter_contract_scenarios(scenarios, cfg$climate_projections)
+  if (nrow(flt$excluded) > 0) {
+    cat(sprintf("Excluded %d non-contract scenario(s): %s
+", nrow(flt$excluded),
+                paste(unique(paste(flt$excluded$gcm, flt$excluded$period, flt$excluded$ssp, sep = "/")), collapse = ", ")))
+  }
+  scenarios <- flt$scenarios
   canonical_token <- function(x) tolower(gsub("[^A-Za-z0-9]", "", x))
   expected_gcm_names <- vapply(cfg$climate_projections$gcms_contract, function(g) {
     alias <- cfg$climate_projections$gcm_aliases[[g]]

@@ -68,3 +68,19 @@ test_that("refugia contract excludes historical layers and fixes denominator", {
   expect_match(txt, "source_file", fixed = TRUE)
   expect_match(txt, "Historical and SSP-period mean layers are excluded", fixed = TRUE)
 })
+
+test_that("scenario filter drops extra GCMs and the historical baseline", {
+  env <- new.env(parent = globalenv())
+  source(repo_path("03_analysis", "00_contract_helpers.R"), local = env)
+  cp <- yaml::read_yaml(repo_path("00_governance", "config.yaml"))$climate_projections
+  dirs <- c("acces_cm2", "cnrm_cm6_1", "cnrm_esm2_1", "inm_cm4_8", "inm_cm5_0",
+            "miroc6", "miroc_es2l", "mpi_esm1_2_lr", "mri_esm2_0")
+  sc <- expand.grid(gcm = dirs, period = c("2021_2050", "2051_2080", "2071_2100"),
+                    ssp = c("ssp126", "ssp245", "ssp370", "ssp585"), stringsAsFactors = FALSE)
+  sc <- rbind(sc, data.frame(gcm = "mri_esm2_0", period = "1986_2015", ssp = "historical"))
+  res <- env$filter_contract_scenarios(sc, cp)
+  expect_equal(nrow(res$scenarios), 96)
+  expect_false("miroc_es2l" %in% res$scenarios$gcm)
+  expect_false("historical" %in% res$scenarios$ssp)
+  expect_equal(nrow(res$excluded), 13)
+})

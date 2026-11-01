@@ -207,17 +207,15 @@ finalize_logs <- function() {
   pipeline_log <- file.path(log_dir, "pipeline.log")
   
   # Count entries
-  n_info <- if (file.exists(pipeline_log)) {
-    sum(grepl(" \\| INFO \\|", readLines(pipeline_log, warn = FALSE)))
-  } else 0
-  
-  n_warnings <- if (file.exists(file.path(log_dir, "warnings.log"))) {
-    sum(grepl(" \\| WARNING \\|", readLines(file.path(log_dir, "warnings.log"), warn = FALSE)))
-  } else 0
-  
-  n_errors <- if (file.exists(file.path(log_dir, "errors.log"))) {
-    sum(grepl(" \\| ERROR \\|", readLines(file.path(log_dir, "errors.log"), warn = FALSE)))
-  } else 0
+  count_run_entries <- function(path, level) {
+    if (!file.exists(path)) return(0L)
+    x <- readLines(path, warn = FALSE)
+    sum(grepl(paste0(" | ", .LOG_STATE$run_id, " | "), x, fixed = TRUE) &
+          grepl(paste0(" | ", level, " |"), x, fixed = TRUE))
+  }
+  n_info     <- count_run_entries(pipeline_log, "INFO")
+  n_warnings <- count_run_entries(file.path(log_dir, "warnings.log"), "WARNING")
+  n_errors   <- count_run_entries(file.path(log_dir, "errors.log"), "ERROR")
   
   # Write summary
   summary_msg <- paste0(

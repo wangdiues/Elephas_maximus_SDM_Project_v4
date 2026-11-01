@@ -234,3 +234,15 @@ validate_file <- function(path, type = "raster", template = NULL) {
   result$valid <- TRUE
   result
 }
+
+# Keep only contracted GCM/SSP/period scenarios. Extra GCM folders and the
+# historical baseline under future/ are excluded rather than counted.
+filter_contract_scenarios <- function(scenarios, cp) {
+  tok <- function(x) tolower(gsub("[^A-Za-z0-9]", "", x))
+  gcms <- vapply(cp$gcms_contract, function(g) cp$gcm_aliases[[g]] %||% g, character(1))
+  keep <- tok(scenarios$gcm) %in% tok(gcms) &
+    tok(scenarios$ssp) %in% tok(cp$ssps_contract) &
+    tok(scenarios$period) %in% tok(cp$periods_contract)
+  excluded <- unique(scenarios[!keep, , drop = FALSE])
+  list(scenarios = scenarios[keep, , drop = FALSE], excluded = excluded)
+}
