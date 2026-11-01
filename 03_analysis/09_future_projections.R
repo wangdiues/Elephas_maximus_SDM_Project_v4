@@ -575,7 +575,7 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
     # ensemble extrapolation: any GCM says extrapolation
     ensemble_ex <- tryCatch({
       ex_stk <- rast(ex_files)
-      if (nlyr(ex_stk) == 1) ex_stk else app(ex_stk, function(v) max(v, na.rm = TRUE))
+      if (nlyr(ex_stk) == 1) ex_stk else app(ex_stk, function(v) if (all(is.na(v))) NA_real_ else max(v, na.rm = TRUE))
     }, error = function(e) {
       cat(sprintf("  Warning: ensemble extrapolation failed for %s_%s: %s\n", ssp, period, conditionMessage(e)))
       NULL
