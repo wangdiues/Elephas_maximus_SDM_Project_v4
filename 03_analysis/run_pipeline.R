@@ -298,6 +298,8 @@ main <- function() {
   config_rel <- if (length(args) >= 1) args[[1]] else "00_governance/config.yaml"
   
   if (!file.exists(config_rel)) stop("Config not found: ", config_rel)
+  # Absolute path: a relative one failed to reopen mid-run on Windows ("Invalid argument").
+  config_rel <- normalizePath(config_rel, winslash = "/", mustWork = TRUE)
 
   cfg <- yaml::read_yaml(config_rel)
   repo_root <- cfg$paths$repo_root
