@@ -1760,9 +1760,9 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
 } # end source guard
 
 # ── Standalone invocation ─────────────────────────────────────────────────────
-local({
+if (sys.nframe() == 0) local({
   args <- commandArgs(trailingOnly = TRUE)
-  if (length(args) >= 1 && !exists("run_dir", envir = .GlobalEnv)) {
+  if (length(args) >= 1) {
     run_dir <- normalizePath(args[1], winslash = "/", mustWork = FALSE)
     run_id  <- if (length(args) >= 2) args[2] else {
       if (exists("read_run_id_from_manifest", mode = "function")) {
