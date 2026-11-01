@@ -4,6 +4,21 @@ Chronological record of key modelling and governance decisions.
 
 ---
 
+## 2026-11-02: MESS is a diagnostic, not a mask
+
+**Defect**: `09_future_projections.R` set future predictions to NA where MESS < -3. The MESS variables were hard-coded as BIO01/BIO12/BIO15; only BIO15 was retained, so the code fell back to the first three predictors in manifest order. The reference was 5,000 random cells across Bhutan rather than the calibration data. The masked cells then dropped out of the habitat-area totals and counted as unsuitable in the refugia counts. None of this was stated in the config or the Methods.
+
+**Decision**: MESS reference = present climate at the 1,063 calibration stations (Elith et al. 2010). Variables = all retained climate predictors, the only layers that change in projections. A cell is flagged as extrapolated when MESS < 0. Predictions are not masked: the extrapolated fraction is reported per projection and per SSP × period, and the Results report how much present habitat and refugia fall in extrapolated cells.
+
+---
+
+## 2026-11-02: Uncertainty layers and late-phase contract fixes
+
+- GCM spread = SD of the five per-GCM ensemble maps. Algorithm spread = SD across GLM/RF/BRT only (the ensemble layer had been counted as a fourth algorithm). Agreement gain/loss uses the OOF ensemble TSS threshold, not 0.5.
+- The figure contract required two figures that are no longer written. Table 1 failed on `aggregate()` output. Both were found by dry-running the pipeline tail on RUN_20261101_235840_b990 before relaunching.
+
+---
+
 ## 2026-11-01: Spatial folds balance presences and absences
 
 **Defect**: `create_spatial_blocks()` balanced folds on presence counts only. Once the presence-bearing blocks were placed, every absence-only block went to the fold with the fewest presences. In RUN_20261101_162332 one fold therefore held 736 of the 824 absences (89%). Training sets were presence-heavy, which produced miscalibrated OOF predictions:

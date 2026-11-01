@@ -244,11 +244,12 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
   # Memory management: limit terra memory usage
   tryCatch(terra::terraOptions(memfrac = 0.5), error = function(e) NULL)
 
-  # MESS settings
-  default_mess_cols <- c("BIO01", "BIO12", "BIO15")
-  mess_threshold <- -3  # keep cells where MESS > -3 (adjust if needed)
+  # MESS (Elith et al. 2010): reference = present climate at the calibration
+  # stations; variables = every retained climate predictor (the only layers that
+  # change in the future). Reported as a diagnostic; predictions are not masked.
+  mess_cols <- pred_cols[!vapply(pred_cols, function(p) is.null(predictor_to_bio(p)), logical(1))]
 
-  # Pre-load and cache static predictors + MESS reference (once, not per scenario)
+  # Pre-load and cache static predictors (once, not per scenario)
   static_cache <- list()
   for (nm in pred_cols) {
     f_static <- static_map[[nm]]
@@ -262,16 +263,22 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
     }
   }
 
-  # Pre-compute MESS reference values from current static rasters
-  mess_cols <- intersect(default_mess_cols, pred_cols)
-  if (length(mess_cols) < 3) mess_cols <- head(pred_cols, min(3, length(pred_cols)))
   mess_ref_vals <- NULL
-  if (all(mess_cols %in% names(static_cache))) {
+  if (length(mess_cols) > 0 && all(mess_cols %in% names(static_cache))) {
+    stations <- do.call(rbind, lapply(c("presence_points_clean.csv", "absence_points_clean.csv"), function(f) {
+      d <- read.csv(file.path(proc_dir, f), stringsAsFactors = FALSE)
+      d[, c("longitude", "latitude")]
+    }))
+    sv <- terra::project(terra::vect(stations, geom = c("longitude", "latitude"), crs = "EPSG:4326"),
+                         terra::crs(template))
     cur_stk <- rast(unname(static_cache[mess_cols]))
     names(cur_stk) <- mess_cols
-    mess_ref_vals <- sample_stack_matrix(cur_stk, size = 5000)
-    rm(cur_stk)
+    mess_ref_vals <- as.matrix(terra::extract(cur_stk, sv, ID = FALSE))
+    mess_ref_vals <- mess_ref_vals[stats::complete.cases(mess_ref_vals), , drop = FALSE]
+    if (nrow(mess_ref_vals) < 100) stop("Too few calibration stations with climate values for MESS")
+    rm(cur_stk, sv, stations)
   }
+  if (isTRUE(strict) && is.null(mess_ref_vals)) stop("MESS reference could not be built")
 
   for (i in seq_len(nrow(scenarios))) {
     s <- scenarios[i, ]
@@ -418,11 +425,6 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
         )
       } else {
         next
-      }
-
-      # Mask extrapolation areas (only if MESS is valid)
-      if (do_mess) {
-        pred <- ifel(mess_rast > mess_threshold, pred, NA)
       }
 
       # Clip to AOI
