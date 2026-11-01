@@ -1588,12 +1588,13 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
       stop("validated refugia outputs or contract are missing")
     }
     contract <- read.csv(contract_file, stringsAsFactors = FALSE)
-    if (nrow(contract) != 1 || contract$denominator_n[[1]] != 96 ||
+    if (nrow(contract) != 1 || contract$denominator_n[[1]] != contract$core_minimum[[1]] ||
         contract$denominator_type[[1]] != "individual GCM projections") {
-      stop("S18 requires the contracted 96 individual-GCM denominator")
+      stop("S18 requires the individual-GCM refugia contract")
     }
     stab_r <- rast(count_file)
     n_scen <- as.integer(contract$denominator_n[[1]])
+    high_min <- as.integer(contract$high_stability_minimum[[1]])
 
     # AOI mask
     if (!is.null(aoi_v)) {
@@ -1649,8 +1650,8 @@ create_supplementary_figures <- function(run_dir, run_id = "") {
       .boundary_geoms(crs(stab_r), with_dzong = TRUE) +
       annotate("label", x = Inf, y = Inf,
                label = sprintf(
-                 "Core (96/96): %.1f%% of present-suitable area\nHigh+Core (\u226572/96): %.1f%%\nn = %d GCM projections",
-                 pct_core, pct_part, n_scen),
+                 "Core (%d/%d): %.1f%% of present-suitable area\nHigh+Core (\u2265%d/%d): %.1f%%\nn = %d GCM projections",
+                 n_scen, n_scen, pct_core, high_min, n_scen, pct_part, n_scen),
                hjust = 1.02, vjust = 1.05, size = 3.2, fill = "white", alpha = 0.92,
                linewidth = 0.3) +
       labs(

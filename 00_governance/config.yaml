@@ -46,7 +46,7 @@ execution:
   require_empty_run_directory: true
   fail_on_required_output_error: true
   skip_existing: false
-  max_future_scenarios: 96
+  max_future_scenarios: 60
 
 spatial_cv:
   k_folds: 5
@@ -78,15 +78,14 @@ vectors:
 
 climate_projections:
   future_root: "01_data_raw/02_rasters/future"
-  gcms_contract: ["MRI-ESM2-0", "ACCESS-CM2", "CNRM-CM6-1", "CNRM-ESM2-1", "INM-CM4-8", "INM-CM5-0", "MIROC6", "MPI-ESM1-2-LR"]
+  gcms_contract: ["ACCESS-CM2", "CNRM-CM6-1", "INM-CM5-0", "MIROC6", "MPI-ESM1-2-LR"]
   ssps_contract: ["SSP1-2.6", "SSP2-4.5", "SSP3-7.0", "SSP5-8.5"]
   periods_contract: ["2021-2050", "2051-2080", "2071-2100"]
-  expected_gcm_scenarios: 96
+  expected_gcm_scenarios: 60
   expected_ssp_period_summaries: 12
   gcm_aliases:
     ACCESS-CM2: "ACCES_CM2"
     CNRM-CM6-1: "CNRM_CM6_1"
-    INM-CM4-8: "INM_CM4_8"
 
 spatial:
   target_crs_epsg: 32645

@@ -83,7 +83,8 @@ write_synthesis_reports <- function(run_dir, run_id) {
   gcm_list <- if (!is.null(cfg_snap$climate_projections$gcms_contract))
     paste(cfg_snap$climate_projections$gcms_contract, collapse = ", ")
   else
-    "MRI-ESM2-0, ACCESS-CM2, CNRM-CM6-1, CNRM-ESM2-1, INM-CM4-8, INM-CM5-0, MIROC6, MPI-ESM1-2-LR"
+    "unspecified"
+  n_gcm <- length(cfg_snap$climate_projections$gcms_contract)
   included_algorithms <- if (!is.null(ensemble_contract) && all(c("algorithm", "included") %in% names(ensemble_contract)))
     toupper(ensemble_contract$algorithm[ensemble_contract$included %in% TRUE]) else character(0)
   included_label <- if (length(included_algorithms)) paste(included_algorithms, collapse = ", ") else "no eligible members recorded"
@@ -210,7 +211,7 @@ write_synthesis_reports <- function(run_dir, run_id) {
     "",
     "## A — Assessment",
     "",
-    paste0("**Scenario coverage:** ", n_scenarios, " scenarios (target: ", max_future_target, " = 8 GCM \u00d7 4 SSP \u00d7 3 periods)"),
+    paste0("**Scenario coverage:** ", n_scenarios, " scenarios (target: ", max_future_target, " = ", n_gcm, " GCM \u00d7 4 SSP \u00d7 3 periods)"),
     "",
     if (length(extrap_lines) > 0) c("**Extrapolation:**", extrap_lines) else character(0),
     "",
@@ -276,7 +277,7 @@ write_synthesis_reports <- function(run_dir, run_id) {
     "",
     "## Future Scenarios",
     "",
-    paste0("- Target: ", max_future_target, " scenarios (8 GCM \u00d7 4 SSP \u00d7 3 periods)"),
+    paste0("- Target: ", max_future_target, " scenarios (", n_gcm, " GCM \u00d7 4 SSP \u00d7 3 periods)"),
     paste0("- Processed: ", n_scenarios),
     paste0("- GCMs: ", gcm_list),
     "- SSPs: SSP1-2.6, SSP2-4.5, SSP3-7.0, SSP5-8.5",

@@ -46,7 +46,7 @@ The paper is submission ready only when:
 1. All scientific results come from one immutable production run.
 2. Every algorithm is evaluated with genuine spatial out-of-fold predictions.
 3. Present and future ensembles use the same algorithm definition and weights.
-4. Future products contain exactly 8 GCMs, 4 SSPs, 3 periods, 96 GCM scenario combinations, and 12 SSP-period summaries.
+4. Future products contain exactly 5 GCMs, 4 SSPs, 3 periods, 60 GCM scenario combinations, and 12 SSP-period summaries (8 → 5 GCMs on 2026-11-01; see memory_log.md).
 5. Refugia calculations exclude historical layers from the future scenario count.
 6. National area, accessible area, and complete-case modelling area are reported separately.
 7. The conflict product is described and validated at the level supported by the data.

@@ -588,7 +588,7 @@ create_all_figures <- function(run_dir, run_id) {
       aoi_geom(aoi_plot) +
       ggplot2::labs(
         title    = "GCM ensemble uncertainty in projected habitat suitability",
-        subtitle = sprintf("Standard deviation across 8 GCMs | SSP585 2071\u20132100 | Mean SD = %.3f",
+        subtitle = sprintf("Standard deviation across GCMs | SSP585 2071\u20132100 | Mean SD = %.3f",
                            mean_sd)
       ) +
       map_theme() + ggplot2::coord_sf()

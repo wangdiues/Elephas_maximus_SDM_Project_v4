@@ -4,6 +4,20 @@ Chronological record of key modelling and governance decisions.
 
 ---
 
+## 2026-11-01: Reduce the GCM ensemble from 8 to 5 independent model families
+
+**Decision**: Project with ACCESS-CM2, CNRM-CM6-1, INM-CM5-0, MIROC6 and MPI-ESM1-2-LR: 5 GCMs × 4 SSPs × 3 periods = 60 individual projections and 12 SSP-period summaries. Remove CNRM-ESM2-1, INM-CM4-8, MRI-ESM2-0 and the never-contracted MIROC-ES2L from `01_data_raw/02_rasters/future/`.
+
+**Rationale**:
+- Cut projection cost by about 40%.
+- Use one model per family, so ensemble members are not near-duplicates. CNRM-ESM2-1 shares the CNRM-CM6-1 atmosphere and ocean; INM-CM4-8 shares the INM-CM5-0 core (Knutti et al. 2017, GRL 44:1909).
+- Span low to high equilibrium climate sensitivity rather than clustering at the extremes. Approximate ECS: INM-CM5-0 ~1.9 °C, MIROC6 ~2.6, MPI-ESM1-2-LR ~3.0, ACCESS-CM2 ~4.7, CNRM-CM6-1 ~4.8. Verify these against Meehl et al. 2020 (Sci. Adv. 6:eaba1981) before citing.
+- This responds to the "hot model" concern (Hausfather et al. 2022, Nature 605:26).
+
+**Consequences**: refugia denominator = 60; core = 60/60; high stability ≥ 45/60 (`ceiling(0.75 × 60)`). This supersedes the 96/96 and ≥72/96 thresholds of the 2026-10-18 entry. The manuscript must state the selection criteria (family independence and ECS spread) and acknowledge that 5 GCMs under-sample structural uncertainty relative to the full CMIP6 ensemble.
+
+---
+
 ## 2026-10-18: Submission-readiness analytical and publication contracts
 
 **Decision**: Implement the reviewed submission-readiness plan as fail-fast code contracts without running or replacing the current analysis outputs.
