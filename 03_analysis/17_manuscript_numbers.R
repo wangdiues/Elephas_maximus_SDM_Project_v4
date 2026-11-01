@@ -153,6 +153,15 @@ for (nm in c("core", "high")) {
 }
 ex_core <- vapply(ex_files, function(f) { v <- on_grid(f); mean(v[core] == 1, na.rm = TRUE) }, numeric(1))
 add("refugia_core_extrap_per_projection_median_pct", round(100 * median(ex_core), 1), "%", "refugia x extrapolation")
+elev <- on_grid(d("02_data_intermediate", "elevation_harmonized.tif"))
+md <- read.csv(d("01_processed_data", "modeling_dataset.csv"))
+sv <- project(vect(md, geom = c("longitude", "latitude"), crs = "EPSG:4326"), crs(pres))
+st_elev <- extract(rast(d("02_data_intermediate", "elevation_harmonized.tif")), sv, ID = FALSE)[, 1]
+add("presence_elevation_max_m", round(max(st_elev[md$response == 1], na.rm = TRUE)), "m", "stations x elevation")
+add("absence_stations_above_3000m", sum(st_elev[md$response == 0] > 3000, na.rm = TRUE), "stations", "stations x elevation")
+add("present_suitable_above_3000m_km2", round(sum(suit & elev > 3000, na.rm = TRUE) * cell_km2), "km2", "present x elevation")
+add("refugia_core_above_3000m_km2", round(sum(core & elev > 3000, na.rm = TRUE) * cell_km2), "km2", "refugia x elevation")
+add("present_suitable_below_1000m_pct", round(100 * sum(suit & elev <= 1000, na.rm = TRUE) / sum(suit), 1), "%", "present x elevation")
 lost_any <- suit & !is.na(cnt) & cnt < 45
 add("present_suitable_below_45_km2", round(sum(lost_any) * cell_km2), "km2", "refugia_stability_count")
 add("present_suitable_zero_of_60_km2", round(sum(suit & !is.na(cnt) & cnt == 0) * cell_km2), "km2", "refugia_stability_count")
@@ -176,6 +185,7 @@ add("present_suitable_in_top25_human_pressure_pct", round(100 * sum(suit & hi_hp
 add("refugia_core_in_top25_human_pressure_pct", round(100 * sum(core & hi_hp) / sum(core), 1), "%", "refugia x human pressure")
 add("refugia_core_outside_pa_top25_human_pressure_km2", round(sum(core & !pav & hi_hp) * cell_km2), "km2", "refugia x PA x human pressure")
 expo <- sqrt(norm_rast(pres) * norm_rast(hp))
+writeRaster(expo, file.path(dirname(out_csv), "interaction_exposure_present.tif"), overwrite = TRUE)
 xv <- values(expo, mat = FALSE)
 q85 <- quantile(xv[dom], 0.85, na.rm = TRUE)
 hi_x <- dom & !is.na(xv) & xv >= q85
@@ -184,6 +194,22 @@ add("exposure_top15_threshold", round(q85, 3), "", "85th percentile")
 add("present_suitable_in_top15_exposure_pct", round(100 * sum(suit & hi_x) / sum(suit), 1), "%", "present x exposure")
 add("refugia_core_in_top15_exposure_pct", round(100 * sum(core & hi_x) / sum(core), 1), "%", "refugia x exposure")
 add("refugia_core_outside_pa_top15_exposure_km2", round(sum(core & !pav & hi_x) * cell_km2), "km2", "refugia x PA x exposure")
+
+hwc_file <- file.path("01_data_raw", "04_conflicts", "HWC_Species_Elephant_clean.csv")
+if (file.exists(hwc_file)) {
+  hw <- read.csv(hwc_file, stringsAsFactors = FALSE)
+  hw <- hw[is.finite(hw$longitude) & is.finite(hw$latitude) & hw$longitude != 0, ]
+  hv <- project(vect(hw, geom = c("longitude", "latitude"), crs = "EPSG:4326"), crs(pres))
+  hx <- extract(expo, hv, ID = FALSE)[, 1]
+  hs <- extract(pres, hv, ID = FALSE)[, 1]
+  ok <- !is.na(hx)
+  add("hwc_incidents_in_domain", sum(ok), "incidents", hwc_file)
+  add("hwc_year_min", min(hw$year, na.rm = TRUE), "", hwc_file)
+  add("hwc_year_max", max(hw$year, na.rm = TRUE), "", hwc_file)
+  add("hwc_in_top15_exposure_pct", round(100 * mean(hx[ok] >= q85), 1), "%", "incidents x exposure")
+  add("hwc_exposure_percentile_median", round(100 * median(ecdf(xv[dom])(hx[ok]))), "percentile", "incidents x exposure")
+  add("hwc_in_suitable_habitat_pct", round(100 * mean(hs[ok] >= thr, na.rm = TRUE), 1), "%", "incidents x present habitat")
+}
 
 ledger <- do.call(rbind, ledger)
 ledger$run_id <- run_id

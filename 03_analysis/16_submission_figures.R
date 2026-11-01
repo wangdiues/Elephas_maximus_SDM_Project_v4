@@ -1,10 +1,9 @@
 #!/usr/bin/env Rscript
 # Corrected main-figure builders for submission-critical future and refugia plots.
 
-build_spatial_cv_figure <- function(run_dir, config_path) {
+build_spatial_cv_figure <- function(run_dir, config_path, figure_dir = file.path(run_dir, "08_figures_tables")) {
   cfg <- yaml::read_yaml(config_path)
   proc_dir <- file.path(run_dir, "01_processed_data")
-  figure_dir <- file.path(run_dir, "08_figures_tables")
   block_file <- file.path(proc_dir, "spatial_blocks.gpkg")
   point_file <- file.path(proc_dir, "fold_assignments.csv")
   if (!file.exists(block_file) || !file.exists(point_file)) stop("Spatial CV artifacts are missing")
@@ -31,11 +30,7 @@ build_spatial_cv_figure <- function(run_dir, config_path) {
     ggplot2::scale_fill_manual(values = fold_pal, name = "Spatial fold") +
     ggplot2::coord_sf(expand = FALSE) +
     ggplot2::labs(
-      title = "Study area and spatial cross-validation design",
-      subtitle = sprintf("Whole %.0f-km blocks assigned to %d folds; filled circles are presences and open grey circles are reference records",
-                         cfg$spatial_cv$block_size_km, cfg$spatial_cv$k_folds),
-      x = NULL, y = NULL,
-      caption = "Fold assignment is performed at block level; no block contributes records to more than one fold."
+      x = NULL, y = NULL
     ) + publication_theme(base_size = 9) +
     ggplot2::theme(axis.text = ggplot2::element_blank(), panel.grid = ggplot2::element_blank(),
                    legend.position = "right")
@@ -43,9 +38,8 @@ build_spatial_cv_figure <- function(run_dir, config_path) {
                           width_mm = 178, height_mm = 120, line_art_dpi = 600)
 }
 
-build_variable_importance_figure <- function(run_dir) {
-  figure_dir <- file.path(run_dir, "08_figures_tables")
-  source_file <- file.path(figure_dir, "table_E07_variable_importance.csv")
+build_variable_importance_figure <- function(run_dir, figure_dir = file.path(run_dir, "08_figures_tables")) {
+  source_file <- file.path(run_dir, "08_figures_tables", "table_E07_variable_importance.csv")
   contract_file <- file.path(run_dir, "02_models", "ensemble_contract.csv")
   if (!file.exists(source_file) || !file.exists(contract_file)) stop("Variable-importance source artifacts are missing")
   x <- read.csv(source_file, stringsAsFactors = FALSE)
@@ -56,21 +50,25 @@ build_variable_importance_figure <- function(run_dir) {
   x <- do.call(rbind, lapply(split(x, x$algorithm), function(z) {
     z[order(z$importance, decreasing = TRUE)[seq_len(min(8, nrow(z)))], , drop = FALSE]
   }))
-  x$predictor_label <- gsub("_", " ", x$predictor)
+  nice <- c(BIO05 = "BIO05 max. temp. warmest month", BIO14 = "BIO14 precip. driest month",
+            BIO15 = "BIO15 precip. seasonality", BIO18 = "BIO18 precip. warmest quarter",
+            tri = "Terrain ruggedness", slope = "Slope", aspect = "Aspect", evi = "EVI",
+            dynamicworld_prob = "Land-cover probability", landcover = "Land-cover class",
+            human_footprint = "Human Influence Index")
+  x$predictor_label <- ifelse(x$predictor %in% names(nice), nice[x$predictor],
+                              sub("^dist to ", "Distance to ", gsub("_", " ", x$predictor)))
   x$predictor_panel <- interaction(x$algorithm, x$predictor_label, lex.order = TRUE)
   x$predictor_panel <- stats::reorder(x$predictor_panel, x$importance)
   category_pal <- c("Climate (BIO)" = "#0072B2", "Anthropogenic" = "#D55E00",
-                    "Vegetation/LULC" = "#009E73", "Topography" = "#CC79A7",
+                    "Vegetation" = "#009E73", "Vegetation/LULC" = "#009E73", "Topography" = "#CC79A7",
                     "Distance" = "#E69F00", "Other" = "#777777")
   p <- ggplot2::ggplot(x, ggplot2::aes(x = predictor_panel, y = importance, fill = pred_type)) +
     ggplot2::geom_col(width = 0.72) +
     ggplot2::coord_flip() +
     ggplot2::facet_wrap(~algorithm, scales = "free_y", ncol = 2) +
     ggplot2::scale_x_discrete(labels = function(z) sub("^[^.]+\\.", "", z)) +
-    ggplot2::scale_fill_manual(values = category_pal, name = "Predictor group") +
+    ggplot2::scale_fill_manual(values = category_pal, name = "Predictor group", drop = TRUE) +
     ggplot2::labs(
-      title = "Leading environmental predictors by modelling algorithm",
-      subtitle = "Within-algorithm importance is rescaled to a maximum of 100; magnitudes must not be compared across algorithms",
       x = NULL, y = "Within-algorithm relative importance"
     ) + publication_theme(base_size = 8.5) +
     ggplot2::theme(legend.position = "bottom")
@@ -78,9 +76,8 @@ build_variable_importance_figure <- function(run_dir) {
                           width_mm = 178, height_mm = 150, line_art_dpi = 600)
 }
 
-build_present_suitability_figure <- function(run_dir, config_path) {
+build_present_suitability_figure <- function(run_dir, config_path, figure_dir = file.path(run_dir, "08_figures_tables")) {
   cfg <- yaml::read_yaml(config_path)
-  figure_dir <- file.path(run_dir, "08_figures_tables")
   r <- terra::rast(file.path(run_dir, "03_present_suitability", "suitability_present_ensemble.tif"))
   xy <- as.data.frame(r, xy = TRUE, na.rm = TRUE)
   names(xy)[3] <- "suitability"
@@ -93,10 +90,7 @@ build_present_suitability_figure <- function(run_dir, config_path) {
     ggplot2::scale_fill_viridis_c(option = "C", limits = c(0, 1), name = "Habitat suitability") +
     ggplot2::coord_sf(crs = sf::st_crs(aoi), expand = FALSE) +
     ggplot2::labs(
-      title = "Present-day ensemble habitat suitability for Asian elephants in Bhutan",
-      subtitle = "Yellow outlines show protected areas; excluded model-domain cells are transparent",
-      x = NULL, y = NULL,
-      caption = "Protected-area coverage percentages are reported in the table with explicit denominators, not annotated on the map."
+      x = NULL, y = NULL
     ) + publication_theme(base_size = 9) +
     ggplot2::theme(axis.text = ggplot2::element_blank(), panel.grid = ggplot2::element_blank(),
                    legend.position = "right")
@@ -104,10 +98,9 @@ build_present_suitability_figure <- function(run_dir, config_path) {
                           width_mm = 178, height_mm = 120, line_art_dpi = 600)
 }
 
-build_future_habitat_area_figure <- function(run_dir, config_path) {
+build_future_habitat_area_figure <- function(run_dir, config_path, figure_dir = file.path(run_dir, "08_figures_tables")) {
   cfg <- yaml::read_yaml(config_path)
   future_dir <- file.path(run_dir, "04_future_projections")
-  figure_dir <- file.path(run_dir, "08_figures_tables")
   status <- read.csv(file.path(future_dir, "scenario_status.csv"), stringsAsFactors = FALSE)
   status <- status[status$status == "SUCCESS", , drop = FALSE]
   expected <- as.integer(cfg$climate_projections$expected_gcm_scenarios)
@@ -146,49 +139,42 @@ build_future_habitat_area_figure <- function(run_dir, config_path) {
   present <- terra::rast(file.path(run_dir, "03_present_suitability", "suitability_present_ensemble.tif"))
   present_area <- as.numeric(terra::global(present >= threshold, "sum", na.rm = TRUE)[[1]]) *
     prod(terra::res(present)) / 1e6
-  pal <- publication_palette("scenario")
-  lty <- publication_linetypes()
-  shp <- publication_shapes()
-  p <- ggplot2::ggplot(summary, ggplot2::aes(x = x, y = mean_km2, group = scenario,
-                                              colour = scenario, fill = scenario,
-                                              linetype = scenario, shape = scenario)) +
-    ggplot2::geom_ribbon(ggplot2::aes(ymin = pmax(0, mean_km2 - sd_km2),
-                                      ymax = mean_km2 + sd_km2),
-                         alpha = 0.14, colour = NA) +
-    ggplot2::geom_point(data = status,
-                        ggplot2::aes(x = x, y = area_km2, colour = scenario),
-                        inherit.aes = FALSE, alpha = 0.35, size = 1.3,
-                        position = ggplot2::position_jitter(width = 0.035, height = 0)) +
-    ggplot2::geom_line(linewidth = 0.8) +
-    ggplot2::geom_point(size = 2.4, fill = "white") +
+  gcm_label <- c(acces_cm2 = "ACCESS-CM2", access_cm2 = "ACCESS-CM2", cnrm_cm6_1 = "CNRM-CM6-1",
+                 inm_cm5_0 = "INM-CM5-0", miroc6 = "MIROC6", mpi_esm1_2_lr = "MPI-ESM1-2-LR")
+  status$gcm_label <- unname(gcm_label[tag(status$gcm)])
+  status$gcm_label[is.na(status$gcm_label)] <- status$gcm[is.na(status$gcm_label)]
+  med <- do.call(rbind, lapply(split(status, list(status$scenario, status$x), drop = TRUE), function(z)
+    data.frame(scenario = z$scenario[1], x = z$x[1], median_km2 = stats::median(z$area_km2))))
+  gcm_pal <- c("ACCESS-CM2" = "#E69F00", "CNRM-CM6-1" = "#56B4E9", "INM-CM5-0" = "#009E73",
+               "MIROC6" = "#CC79A7", "MPI-ESM1-2-LR" = "#0072B2")
+  p <- ggplot2::ggplot(status, ggplot2::aes(x = x, y = area_km2)) +
     ggplot2::geom_hline(yintercept = present_area, colour = "#444444", linetype = "dotted") +
-    ggplot2::scale_colour_manual(values = pal) +
-    ggplot2::scale_fill_manual(values = pal) +
-    ggplot2::scale_linetype_manual(values = lty) +
-    ggplot2::scale_shape_manual(values = shp) +
-    ggplot2::scale_x_continuous(breaks = seq_along(period_order), labels = period_order) +
-    ggplot2::labs(
-      title = "Projected suitable habitat area across climate scenarios",
-      subtitle = "Lines show 8-GCM means; ribbons show ±1 SD; faint points show individual GCMs",
-      x = "Climate period", y = expression("Suitable habitat area (km"^2*")"),
-      colour = "Scenario", fill = "Scenario", linetype = "Scenario", shape = "Scenario",
-      caption = sprintf("Dotted line: present baseline (%.0f km²). Binary threshold = %.4f from spatial OOF ensemble predictions.",
-                        present_area, threshold)
-    ) + publication_theme(base_size = 9) +
-    ggplot2::theme(legend.position = "bottom")
+    ggplot2::geom_line(ggplot2::aes(colour = gcm_label, group = gcm_label), linewidth = 0.5) +
+    ggplot2::geom_point(ggplot2::aes(colour = gcm_label), size = 1.2) +
+    ggplot2::geom_line(data = med, ggplot2::aes(y = median_km2), colour = "black", linewidth = 1.1) +
+    ggplot2::geom_point(data = med, ggplot2::aes(y = median_km2), colour = "black", size = 1.8) +
+    ggplot2::facet_wrap(~scenario, nrow = 1) +
+    ggplot2::scale_colour_manual(values = gcm_pal, name = "GCM") +
+    ggplot2::scale_x_continuous(breaks = seq_along(period_order),
+                                labels = gsub("-", "\u2013", period_order),
+                                expand = ggplot2::expansion(mult = 0.12)) +
+    ggplot2::scale_y_continuous(labels = function(v) format(v, big.mark = ",")) +
+    ggplot2::labs(x = NULL, y = expression("Suitable habitat (km"^2*")")) +
+    publication_theme(base_size = 8) +
+    ggplot2::theme(legend.position = "bottom",
+                   axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
   manifest <- save_publication_figure(
     p, file.path(figure_dir, "main_figure_04_future_habitat_area"),
-    width_mm = 178, height_mm = 115, line_art_dpi = 600
+    width_mm = 178, height_mm = 90, line_art_dpi = 600
   )
   write.csv(status[, c("gcm", "scenario", "period", "area_km2")],
             file.path(figure_dir, "main_figure_04_source_data.csv"), row.names = FALSE)
   invisible(manifest)
 }
 
-build_refugia_figure <- function(run_dir, config_path) {
+build_refugia_figure <- function(run_dir, config_path, figure_dir = file.path(run_dir, "08_figures_tables")) {
   cfg <- yaml::read_yaml(config_path)
   change_dir <- file.path(run_dir, "05_change_metrics")
-  figure_dir <- file.path(run_dir, "08_figures_tables")
   frac_file <- file.path(change_dir, "refugia_stability_fraction.tif")
   contract_file <- file.path(change_dir, "refugia_contract.csv")
   if (!file.exists(frac_file) || !file.exists(contract_file)) stop("Validated refugia products are missing")
@@ -197,20 +183,17 @@ build_refugia_figure <- function(run_dir, config_path) {
   names(xy)[3] <- "stability"
   aoi_path <- file.path(cfg$paths$repo_root, cfg$vectors$aoi_bhutan)
   aoi <- sf::st_transform(sf::st_read(aoi_path, quiet = TRUE), terra::crs(r))
-  contract <- read.csv(contract_file, stringsAsFactors = FALSE)
+  pa <- sf::st_transform(sf::st_make_valid(sf::st_read(file.path(cfg$paths$repo_root, cfg$vectors$protected_areas), quiet = TRUE)), terra::crs(r))
   p <- ggplot2::ggplot() +
     ggplot2::geom_raster(data = xy, ggplot2::aes(x = x, y = y, fill = stability)) +
+    ggplot2::geom_sf(data = pa, fill = NA, colour = "#009E73", linewidth = 0.3) +
     ggplot2::geom_sf(data = aoi, fill = NA, colour = "#222222", linewidth = 0.35) +
     ggplot2::scale_fill_viridis_c(option = "C", limits = c(0, 1),
                                   breaks = c(0, 0.25, 0.5, 0.75, 1),
                                   name = "Future projections\nretaining suitability") +
     ggplot2::coord_sf(crs = sf::st_crs(aoi), expand = FALSE) +
     ggplot2::labs(
-      title = "Climate-refugia stability within present suitable habitat",
-      subtitle = sprintf("Fraction of %d individual GCM projections; core refugia = retained in all %d",
-                         contract$denominator_n[[1]], contract$core_minimum[[1]]),
-      x = NULL, y = NULL,
-      caption = "Cells outside present suitable habitat are masked. No historical layer is included in the denominator."
+      x = NULL, y = NULL
     ) + publication_theme(base_size = 9) +
     ggplot2::theme(axis.text = ggplot2::element_blank(), panel.grid = ggplot2::element_blank(),
                    legend.position = "right")
@@ -221,12 +204,13 @@ build_refugia_figure <- function(run_dir, config_path) {
   invisible(manifest)
 }
 
-create_submission_figures <- function(run_dir, config_path) {
-  rbind(build_spatial_cv_figure(run_dir, config_path),
-        build_variable_importance_figure(run_dir),
-        build_present_suitability_figure(run_dir, config_path),
-        build_future_habitat_area_figure(run_dir, config_path),
-        build_refugia_figure(run_dir, config_path))
+create_submission_figures <- function(run_dir, config_path, figure_dir = file.path(run_dir, "08_figures_tables")) {
+  dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
+  rbind(build_spatial_cv_figure(run_dir, config_path, figure_dir),
+        build_variable_importance_figure(run_dir, figure_dir),
+        build_present_suitability_figure(run_dir, config_path, figure_dir),
+        build_future_habitat_area_figure(run_dir, config_path, figure_dir),
+        build_refugia_figure(run_dir, config_path, figure_dir))
 }
 
 if (sys.nframe() == 0) {
@@ -237,5 +221,6 @@ if (sys.nframe() == 0) {
   args <- commandArgs(trailingOnly = TRUE)
   run_dir <- if (length(args) >= 1) args[[1]] else stop("Explicit immutable run_dir is required")
   config_path <- if (length(args) >= 2) args[[2]] else "00_governance/config.yaml"
-  create_submission_figures(run_dir, config_path)
+  figure_dir <- if (length(args) >= 3) args[[3]] else file.path(run_dir, "08_figures_tables")
+  create_submission_figures(run_dir, config_path, figure_dir)
 }
