@@ -475,9 +475,9 @@ create_spatial_blocks <- function(data, block_size_km = 15, k_folds = 5, seed = 
   block_y <- findInterval(coords[, 2], y_breaks, all.inside = TRUE, rightmost.closed = TRUE)
   block_id <- (block_y - 1) * n_blocks_x + block_x
   
-  # Assign whole blocks to folds with a deterministic greedy balance on
-  # presence count first and total records second. Sampling blocks with
-  # replacement can leave folds empty and is not a valid spatial partition.
+  # Assign whole blocks to folds by deterministic greedy balancing of BOTH
+  # presences and absences (each as a share of its class total). Balancing
+  # presences alone sends every absence-only block to the same fold.
   unique_blocks <- sort(unique(block_id))
   if (length(unique_blocks) < k_folds) {
     stop(sprintf("Only %d occupied spatial blocks are available for %d folds; increase resolution or reduce k",
@@ -487,22 +487,28 @@ create_spatial_blocks <- function(data, block_size_km = 15, k_folds = 5, seed = 
   block_stats <- data.frame(
     block_id = unique_blocks,
     n_presence = vapply(unique_blocks, function(z) sum(block_id == z & is_presence), integer(1)),
-    n_total = vapply(unique_blocks, function(z) sum(block_id == z), integer(1))
+    n_absence = vapply(unique_blocks, function(z) sum(block_id == z & !is_presence), integer(1))
   )
+  n_p <- max(1L, sum(block_stats$n_presence))
+  n_a <- max(1L, sum(block_stats$n_absence))
+  block_stats$share <- block_stats$n_presence / n_p + block_stats$n_absence / n_a
   set.seed(seed)
   block_stats$tie <- runif(nrow(block_stats))
-  block_stats <- block_stats[order(-block_stats$n_presence, -block_stats$n_total, block_stats$tie), ]
+  block_stats <- block_stats[order(-block_stats$share, block_stats$tie), ]
   fold_presence <- integer(k_folds)
-  fold_total <- integer(k_folds)
+  fold_absence <- integer(k_folds)
   block_folds <- integer(nrow(block_stats))
   names(block_folds) <- as.character(block_stats$block_id)
   for (i in seq_len(nrow(block_stats))) {
-    candidate <- which(fold_presence == min(fold_presence))
-    candidate <- candidate[fold_total[candidate] == min(fold_total[candidate])]
+    lp <- (fold_presence + block_stats$n_presence[i]) / n_p
+    la <- (fold_absence + block_stats$n_absence[i]) / n_a
+    worst <- pmax(lp, la)
+    candidate <- which(worst == min(worst))
+    candidate <- candidate[order((lp + la)[candidate])]
     chosen <- candidate[[1]]
     block_folds[as.character(block_stats$block_id[i])] <- chosen
     fold_presence[chosen] <- fold_presence[chosen] + block_stats$n_presence[i]
-    fold_total[chosen] <- fold_total[chosen] + block_stats$n_total[i]
+    fold_absence[chosen] <- fold_absence[chosen] + block_stats$n_absence[i]
   }
   
   # Map back to points

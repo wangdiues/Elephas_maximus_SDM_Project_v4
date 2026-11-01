@@ -4,6 +4,18 @@ Chronological record of key modelling and governance decisions.
 
 ---
 
+## 2026-11-01: Spatial folds balance presences and absences
+
+**Defect**: `create_spatial_blocks()` balanced folds on presence counts only. Once the presence-bearing blocks were placed, every absence-only block went to the fold with the fewest presences. In RUN_20261101_162332 one fold therefore held 736 of the 824 absences (89%). Training sets were presence-heavy, which produced miscalibrated OOF predictions:
+- thresholds around 0.55;
+- Brier scores of 0.19–0.31, worse than a constant prevalence prediction (about 0.17);
+- AUC 0.70–0.74.
+All earlier runs using this function share the defect.
+
+**Fix**: whole blocks are assigned greedily, largest first, to the fold that minimises the larger of its presence share and absence share. At 15 km the folds now hold 47–48 presences and 164–165 absences each. Folds stay spatially blocked and deterministic for a given seed. A regression test is in `test-core-functions.R`.
+
+---
+
 ## 2026-11-01: Exclude occurrence records outside Bhutan or with unverified coordinates
 
 **Decision**: `00_prepare_pa_data.R` now regenerates `elephant_PA_data.csv` from `Source_Files/`. It excludes 26 of 1,089 records and logs each, with a reason, in `occurrence_exclusions.csv`. The retained data are 1,063 records: 239 presences and 824 absences.

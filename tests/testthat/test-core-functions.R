@@ -321,6 +321,20 @@ test_that("select_predictors_collinearity handles single predictor", {
 # create_spatial_blocks()
 # =============================================================================
 
+test_that("create_spatial_blocks balances absences as well as presences", {
+  set.seed(7)
+  pres <- data.frame(longitude = runif(100, 89.0, 89.8), latitude = runif(100, 26.8, 27.2),
+                     type = "presence")
+  abs_ <- data.frame(longitude = runif(400, 89.0, 92.0), latitude = runif(400, 26.8, 28.0),
+                     type = "background")
+  df <- rbind(pres, abs_)
+  folds <- create_spatial_blocks(df, block_size_km = 15, k_folds = 5, seed = 42)
+  abs_share <- tabulate(folds[df$type != "presence"], 5) / 400
+  pres_share <- tabulate(folds[df$type == "presence"], 5) / 100
+  expect_lt(max(abs_share), 0.30)
+  expect_lt(max(pres_share), 0.30)
+})
+
 test_that("create_spatial_blocks returns vector of correct length", {
   set.seed(40)
   df <- data.frame(
