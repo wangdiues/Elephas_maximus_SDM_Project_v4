@@ -15,7 +15,7 @@ suppressPackageStartupMessages({
 })
 
 `%||%` <- function(x, y) {
-  if (is.null(x) || !length(x) || (is.character(x) && !nzchar(x))) y else x
+  if (is.null(x) || !length(x) || (is.character(x) && length(x) == 1L && !nzchar(x))) y else x
 }
 
 # =============================================================================

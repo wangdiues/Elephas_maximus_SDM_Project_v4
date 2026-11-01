@@ -29,7 +29,7 @@ if (!exists("calculate_mess", mode = "function")) {
 # Helpers
 # -----------------------------------------------------------------------------
 `%||%` <- function(x, y) {
-  if (is.null(x) || !length(x) || (is.character(x) && !nzchar(x))) y else x
+  if (is.null(x) || !length(x) || (is.character(x) && length(x) == 1L && !nzchar(x))) y else x
 }
 
 normalize_bio_name <- function(x) gsub("[^A-Z0-9]", "", toupper(x))
