@@ -4,6 +4,24 @@ Chronological record of key modelling and governance decisions.
 
 ---
 
+## 2026-11-01: Exclude occurrence records outside Bhutan or with unverified coordinates
+
+**Decision**: `00_prepare_pa_data.R` now regenerates `elephant_PA_data.csv` from `Source_Files/`. It excludes 26 of 1,089 records and logs each, with a reason, in `occurrence_exclusions.csv`. The retained data are 1,063 records: 239 presences and 824 absences.
+
+**Exclusions**:
+- 2 presences with unverified coordinates. In the previous operational file, JWS_064 and SMD11 had latitudes changed from the source survey files without documentation. They are excluded rather than corrected.
+- 24 records (11 presences, 13 absences) outside the national boundary (`bhutan.shp`), which is the study domain M. By distance from the boundary:
+  - 10 lie within 1.5 km of it: GPS or boundary-generalisation error at the southern border.
+  - 2 lie 6–18 km outside.
+  - 9 Royal Manas records lie about 59–66 km south, in Assam (India).
+  - 3 have impossible latitudes (21–24 °N).
+
+**Rationale**: M is the national boundary, and predictors are unavailable outside it. Most of these points were already dropped silently at model fitting, so the reported N did not match the N actually modelled. Explicit, logged exclusion makes the sample size reproducible from the raw survey files.
+
+**Sensitivity**: the 10 near-border records are a possible reinstatement if the boundary is buffered by 1.5 km; this was not done for the primary analysis.
+
+---
+
 ## 2026-11-01: Reduce the GCM ensemble from 8 to 5 independent model families
 
 **Decision**: Project with ACCESS-CM2, CNRM-CM6-1, INM-CM5-0, MIROC6 and MPI-ESM1-2-LR: 5 GCMs × 4 SSPs × 3 periods = 60 individual projections and 12 SSP-period summaries. Remove CNRM-ESM2-1, INM-CM4-8, MRI-ESM2-0 and the never-contracted MIROC-ES2L from `01_data_raw/02_rasters/future/`.

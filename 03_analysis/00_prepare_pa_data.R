@@ -14,7 +14,8 @@
 #       (~88-92°E) — non-standard naming, corrected here.
 #
 # Output  :
-#   01_data_raw/01_occurrences/elephant_PA_combined.csv
+#   01_data_raw/01_occurrences/elephant_PA_data.csv (pipeline input)
+#   01_data_raw/01_occurrences/occurrence_exclusions.csv (excluded records + reason)
 #     - Columns: station_id, longitude, latitude, presence, source
 #     - Spatial duplicates (same lon/lat) are resolved by keeping the record
 #       with the higher presence value (presence wins over absence).
@@ -31,7 +32,7 @@ repo_root <- "."
 occ_dir  <- file.path(repo_root, "01_data_raw", "01_occurrences")
 file1    <- file.path(occ_dir, "Source_Files", "elephant_presence_absence_by_station.csv")
 file2    <- file.path(occ_dir, "Source_Files", "Book1.csv")
-out_file <- file.path(occ_dir, "elephant_PA_combined.csv")
+out_file <- file.path(occ_dir, "elephant_PA_data.csv")
 
 # Rough bounding box for Bhutan + buffer (filters clearly erroneous coords)
 LAT_MIN <- 20; LAT_MAX <- 35
@@ -134,7 +135,35 @@ print(as.data.frame(table(pa_final$source, pa_final$presence,
                            dnn = c("source", "presence"))))
 
 # =============================================================================
+# EXCLUSIONS (logged to occurrence_exclusions.csv)
+# =============================================================================
+# Records whose coordinates were found hand-edited away from the source survey
+# files without documentation; excluded rather than corrected (2026-11-01).
+unverified_ids <- c("JWS_064", "SMD11")
+
+aoi <- sf::st_read(file.path(repo_root, "01_data_raw", "03_vector", "shapefiles",
+                             "Bhutan", "bhutan.shp"), quiet = TRUE)
+pts <- sf::st_transform(sf::st_as_sf(pa_final, coords = c("longitude", "latitude"),
+                                     crs = 4326, remove = FALSE), sf::st_crs(aoi))
+inside <- lengths(sf::st_intersects(pts, sf::st_union(aoi))) > 0
+
+pa_final$exclusion_reason <- dplyr::case_when(
+  pa_final$station_id %in% unverified_ids ~ "unverified_coordinate",
+  !inside                                 ~ "outside_bhutan_boundary",
+  TRUE                                    ~ NA_character_
+)
+exclusions <- dplyr::filter(pa_final, !is.na(exclusion_reason))
+pa_final   <- dplyr::select(dplyr::filter(pa_final, is.na(exclusion_reason)), -exclusion_reason)
+
+cat("\n=== Exclusions ===\n")
+print(as.data.frame(table(exclusions$exclusion_reason, exclusions$presence,
+                          dnn = c("reason", "presence"))))
+cat(sprintf("  Retained: %d records (presences: %d, absences: %d)\n",
+            nrow(pa_final), sum(pa_final$presence == 1), sum(pa_final$presence == 0)))
+
+# =============================================================================
 # SAVE
 # =============================================================================
+write_csv(exclusions, file.path(occ_dir, "occurrence_exclusions.csv"))
 write_csv(pa_final, out_file)
 cat(sprintf("\nSaved: %s\n", out_file))

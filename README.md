@@ -33,7 +33,7 @@ reviewing size, licensing, and species-location sensitivity constraints.
 ### Study Area & Data
 
 - **CRS**: EPSG:32645 (WGS 84 / UTM Zone 45N)
-- **Occurrence Data**: 1,089 station-level presence-absence records (252 presences, 837 absences)
+- **Occurrence Data**: 1,063 station-level presence-absence records (239 presences, 824 absences) inside the Bhutan boundary; 26 excluded records are listed in `01_data_raw/01_occurrences/occurrence_exclusions.csv`
 - **Background Points**: ~10,000 bias-corrected
 - **Predictors**: 19 bioclimatic + DEM + HFI + NDVI + EVI + distance layers (25 total)
 
