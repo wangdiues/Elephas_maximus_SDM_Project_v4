@@ -19,7 +19,7 @@ Study area: Bhutan (national)
 9. **No silent failures** — All phase errors are caught and logged; fatal errors halt the pipeline with a clear message.
 10. **Seed traceability** — Global and per-module seeds are declared in `config.yaml` and applied before stochastic operations.
 11. **Registry completeness** — `run_registry.csv` and `model_registry.csv` are appended on every run, successful or not.
-12. **Documentation currency** — `README.md`, `QUICKSTART.md`, and `FEATURES.md` must reflect the active study area and pipeline version.
+12. **Documentation currency** — `README.md`, `QUICKSTART.md`, and `CHANGELOG.md` must reflect the active study area and pipeline version.
 13. **Test coverage** — Core functions, governance files, and pipeline integration are covered by `tests/testthat/`.
 14. **Dependency minimalism** — `DESCRIPTION` Imports lists only packages required at runtime; heavy packages are Suggests.
 15. **Study area genericity** — Study area name and ID are read from config; no script may hard-code a place name in logic or output filenames.

@@ -158,7 +158,7 @@ The pipeline generates:
 - ODMAP-compliant reports
 - Management brief
 
-See `FEATURES.md` for complete list.
+See `README.md` for the output layout and `CHANGELOG.md` for recent changes.
 
 ---
 

@@ -53,7 +53,7 @@ Status legend: **READY** = configured but not necessarily executed; **CODE READY
 - [x] 00_data_validation.R: aoi_bhutan key (2 locations)
 - [x] setup.R: occurrence + AOI paths updated
 - [x] run_pipeline.R: aoi_bhutan key (2 locations)
-- [x] _check_crs.R: paths updated to bhutan.shp
+- [x] CRS check script: paths updated to bhutan.shp (script since removed)
 
 ### Tests
 - [x] test-pipeline-integration.R: vector_keys updated; settlements/private_land removed
