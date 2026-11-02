@@ -164,11 +164,7 @@ generate_publication_tables <- function(run_dir, config_path = NULL) {
     manifest$Status         <- ifelse(manifest$selected, "Selected", "Removed")
     manifest$Removal_reason <- sapply(manifest$predictor, function(p) {
       idx <- which(removal$predictor == p)
-      r   <- if (length(idx) > 0) as.character(removal$reason[idx[1]]) else ""
-      # Fill known missing reasons
-      if (nzchar(r)) r
-      else if (grepl("dist_to_roads", p, ignore.case = TRUE)) "Not available in study area"
-      else ""
+      if (length(idx) > 0) as.character(removal$reason[idx[1]]) else ""
     })
 
     t2 <- data.frame(

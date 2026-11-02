@@ -24,6 +24,7 @@ occurrence:
 
 predictors:
   strict_predictor_extraction: true
+  exclude: []
   baseline_climate_glob: "01_data_raw/02_rasters/present/Historical_bioclims/Historical_1986-2015_bio*.tif"
   dem: "01_data_raw/02_rasters/dem/DEM_Bhutan_12.5NG.tif"
   present_human_footprint: "01_data_raw/02_rasters/present/HII_Bhutan_2020.tif"

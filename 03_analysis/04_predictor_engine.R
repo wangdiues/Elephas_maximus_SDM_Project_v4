@@ -239,6 +239,8 @@ build_predictor_engine <- function(repo_root, run_dir, config_path, run_id) {
   good_numeric <- names(vals_num)[sapply(vals_num, function(z) is.numeric(z) && any(is.finite(z), na.rm = TRUE))]
   if (length(good_numeric) == 0) stop("No numeric predictors extracted")
   pred_cols <- good_numeric
+  excluded <- intersect(as.character(unlist(config$predictors$exclude)), pred_cols)
+  pred_cols <- setdiff(pred_cols, excluded)
 
   vals_clean <- vals_num[complete.cases(vals_num[, pred_cols, drop = FALSE]), , drop = FALSE]
   if (nrow(vals_clean) == 0) {
@@ -268,6 +270,10 @@ build_predictor_engine <- function(repo_root, run_dir, config_path, run_id) {
   )
   final_preds <- sel$selected
   if (length(final_preds) == 0) final_preds <- pred_cols
+  for (nm in excluded) {
+    sel$removed <- unique(c(sel$removed, nm))
+    sel$reasons <- append_removal_reason(sel$reasons, nm, "Excluded by config (predictors$exclude)")
+  }
 
   if (length(final_preds) > 1) {
     diag_res <- tryCatch(
