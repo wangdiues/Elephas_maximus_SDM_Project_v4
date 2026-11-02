@@ -44,6 +44,13 @@ L["domain_excluded_km2"] = str(round(num("bhutan_km2_on_grid") - num("domain_km2
 L["present_suitable_outside_pa_pct"] = f"{100 - num('present_suitable_in_pa_pct'):.1f}"
 L["present_suitable_outside_pa_km2"] = str(round(num("present_suitable_km2") - num("present_suitable_in_pa_km2")))
 L["refugia_core_outside_pa_pct"] = f"{100 - num('refugia_core_in_pa_pct'):.1f}"
+sens_dir = ms_dir / "sensitivity_no_dist_pa"
+sens = rows(sens_dir / "claim_ledger_no_dist_pa.csv")
+L["sens_run_id"] = sens[0]["run_id"]
+L.update({"sens_" + r["key"]: r["value"] for r in sens})
+L["sens_present_suitable_outside_pa_pct"] = f"{100 - num('sens_present_suitable_in_pa_pct'):.1f}"
+L["sens_refugia_core_outside_pa_pct"] = f"{100 - num('sens_refugia_core_in_pa_pct'):.1f}"
+L.update({r["key"]: r["value"] for r in rows(sens_dir / "map_agreement.csv")})
 mean_changes = [num(k) for k in L if k.startswith("future_change_pct_")]
 L["future_mean_change_min"] = f"{min(mean_changes):.1f}"
 L["future_mean_change_max"] = f"{max(mean_changes):.1f}"
@@ -232,9 +239,34 @@ body = []
 for s in SSP:
     for p in PER:
         vals = {r["gcm"]: r for r in tr if r["ssp"] == s and r["period"] == p}
-        body.append([SSP[s], PER[p]] + [f"{fmt(round(float(vals[g]['area_km2'])))} ({float(vals[g]['change_pct']):+.1f}%)" for g in GCM])
+        body.append([SSP[s], PER[p]] + [f"{fmt(round(float(vals[g]['area_km2'])))} ({float(vals[g]['change_pct']):+.1f}%)".replace("-", "−") for g in GCM])
 S.append(table(["Pathway", "Period"] + list(GCM.values()), body,
                "Table S12. Suitable habitat (km²) and change from present (%) for each GCM."))
+
+S13 = [("Ensemble AUC (spatial OOF)", "ensemble_auc_mean"), ("Ensemble TSS (spatial OOF)", "ensemble_tss_mean"),
+       ("Ensemble Boyce index", "ensemble_boyce"), ("Classification threshold", "threshold"),
+       ("Present habitat (km²)", "present_suitable_km2"), ("Present habitat inside PA network (%)", "present_suitable_in_pa_pct"),
+       ("Present habitat outside PA network (%)", "present_suitable_outside_pa_pct"),
+       ("Core refugia, suitable in 60/60 projections (km²)", "refugia_core_km2"),
+       ("Core refugia outside PA network (%)", "refugia_core_outside_pa_pct"),
+       ("High-stability habitat, ≥ 45/60 (km²)", "refugia_high_km2"),
+       ("Projections with net loss (of 60)", "per_gcm_n_projections_loss"),
+       ("Range of change across projections (%)", None),
+       ("GCM-median change, SSP5-8.5, 2071–2100 (%)", "future_gcm_median_change_pct_ssp585_2071_2100")]
+body = []
+for label, k in S13:
+    if k is None:
+        body.append([label, f"{fmt(L['per_gcm_change_pct_min'])} to +{fmt(L['per_gcm_change_pct_max'])}",
+                     f"{fmt(L['sens_per_gcm_change_pct_min'])} to +{fmt(L['sens_per_gcm_change_pct_max'])}"])
+    elif k in ("ensemble_boyce", "threshold"):
+        body.append([label, c(L[k]), c(L["sens_" + k])])
+    else:
+        body.append([label, fmt(L[k]), fmt(L["sens_" + k])])
+S.append(table(["Quantity", "Primary model", "Without distance to protected areas"], body,
+               "Table S13. Sensitivity of the main results to removing distance to protected areas as a predictor.",
+               f"The sensitivity run (`{L['sens_run_id']}`) was identical to the accepted run (`{run.name}`) except for this "
+               f"predictor, and repeated all 60 projections. Agreement of present-day suitability maps: Pearson *r* = "
+               f"{L['map_pearson_r']}, Schoener's *D* = {L['map_schoener_d']}; Jaccard overlap of habitat maps = {L['map_jaccard']}."))
 
 for i, (f, cap) in enumerate([
         ("figure_s10_mess_map", "Climatic novelty relative to the calibration stations, GCM mean, SSP5-8.5, 2071–2100. Negative values indicate at least one climate predictor outside the range sampled by the surveys (in calibration standard deviations)."),
