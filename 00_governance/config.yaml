@@ -88,6 +88,9 @@ climate_projections:
     ACCESS-CM2: "ACCES_CM2"
     CNRM-CM6-1: "CNRM_CM6_1"
 
+prediction:
+  max_elevation_m: 3000
+
 spatial:
   target_crs_epsg: 32645
 

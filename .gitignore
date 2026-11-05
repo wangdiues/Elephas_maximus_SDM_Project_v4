@@ -41,3 +41,6 @@ pipeline_live.log
 pipeline_run_output*
 
 07_references/
+
+04_outputs/revision_jwm/
+__pycache__/

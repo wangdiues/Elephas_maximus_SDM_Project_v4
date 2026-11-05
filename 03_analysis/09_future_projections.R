@@ -108,6 +108,7 @@ project_future_with_mess <- function(repo_root, run_dir, max_scenarios = Inf,
   # AOI mask for clipping outputs
   m_mask_path <- file.path(run_dir, "02_data_intermediate", "m_mask.tif")
   m_mask_r <- if (file.exists(m_mask_path)) tryCatch(rast(m_mask_path), error = function(e) NULL) else NULL
+  m_mask_r <- apply_elevation_limit(m_mask_r, run_dir)
   apply_aoi_mask <- function(r) {
     if (is.null(m_mask_r)) return(r)
     msk <- m_mask_r

@@ -190,7 +190,7 @@ fp <- resample(rast(d("02_data_intermediate", "human_footprint_harmonized.tif"))
 hp <- norm_rast(fp)
 bldg <- d("02_data_intermediate", "building_footprints_harmonized.gpkg")
 if (file.exists(bldg)) {
-  b <- rasterize(vect(bldg), pres, field = 1, background = NA)
+  b <- rasterize(vect(bldg), pres, field = 1, background = NA, touches = TRUE)
   hp <- norm_rast(hp + norm_rast(1 / (1 + distance(b) / 1000)))
 }
 hpv <- values(hp, mat = FALSE)

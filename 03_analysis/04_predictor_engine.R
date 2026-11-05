@@ -112,7 +112,8 @@ build_predictor_engine <- function(repo_root, run_dir, config_path, run_id) {
     # Fast distance: rasterize vector to grid, then compute grid-based distance
     # This is orders of magnitude faster than distance(raster, vector) for complex geometries
     presence_r <- tryCatch({
-      rasterize(vv, template, field = 1, background = NA)
+      # touches = TRUE: footprints and parcels smaller than a cell miss every cell center
+      rasterize(vv, template, field = 1, background = NA, touches = TRUE)
     }, error = function(e) NULL)
     if (is.null(presence_r)) next
     d <- distance(presence_r)

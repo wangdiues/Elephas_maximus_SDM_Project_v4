@@ -127,6 +127,18 @@ boyce_continuous <- function(predicted, background, n_bins = NULL) {
   )
 }
 
+#' Limit mapped predictions to elevations in config prediction$max_elevation_m.
+#' Models still train on every station; only mapped outputs are masked. Without this
+#' limit, the linear model extrapolates to high suitability on snow and rock.
+apply_elevation_limit <- function(mask_r, run_dir) {
+  cfg <- yaml::read_yaml(file.path(run_dir, "00_manifest", "config_snapshot.yaml"))
+  lim <- cfg$prediction$max_elevation_m
+  if (is.null(lim) || is.null(mask_r)) return(mask_r)
+  el <- rast(file.path(run_dir, "02_data_intermediate", "elevation_harmonized.tif"))
+  if (!isTRUE(compareGeom(el, mask_r, stopOnError = FALSE))) el <- project(el, mask_r, method = "bilinear")
+  ifel(!is.na(el) & el > lim, 0, mask_r)
+}
+
 # =============================================================================
 # MESS (Multivariate Environmental Similarity Surface)
 # =============================================================================
