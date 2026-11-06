@@ -2,13 +2,14 @@
 
 Every {{key}} in 05_manuscripts/source/*_jwm.md is replaced from the claim ledgers
 (17_manuscript_numbers.R, 21_jwm_numbers_figures.R); a missing key is an error.
-Adds revision outputs from 04_outputs/revision_jwm. Writes only to the Revision folder;
+Adds outputs from REV_OUT (default 04_outputs/revision_jwm/corrected). Writes only to REV_DOCS;
 earlier manuscript files are not touched. Supporting Information items are numbered
 automatically in order of first citation from [[S:key]], [[F:key]] and [[A:key]] labels.
 
 Usage (repo root): python 03_analysis/29_build_revised.py 04_outputs/runs/RUN_<id>
 """
 import csv
+import os
 import re
 import shutil
 import subprocess
@@ -26,15 +27,16 @@ run = Path(sys.argv[1])
 ms_dir = Path("05_manuscripts")
 src = ms_dir / "source"
 jwm_dir = ms_dir / "Journal of Wildlife Management"
-out_dir = jwm_dir / "Revision"
-rev = Path("04_outputs/revision_jwm")
+out_dir = jwm_dir / os.environ.get("REV_DOCS", "Revision_Corrected")
+rev = Path(os.environ.get("REV_OUT", "04_outputs/revision_jwm/corrected"))
+led_dir = rev / "ledger"
+num_dir = rev / "jwm"
 rev_t = rev / "tables"
-fig_in = ms_dir / "figures"
-fig_work = jwm_dir / "figures"
+fig_work = num_dir / "figures"
 fig_out = out_dir / "Figures_for_upload"
 tab_dir = run / "08_figures_tables"
 TITLE = "Most modeled Asian elephant habitat in Bhutan lies outside protected areas, with uncertain climate refugia"
-DATE = "5 November 2026"
+DATE = "6 November 2026"
 
 
 def rows(path):
@@ -42,12 +44,13 @@ def rows(path):
         return list(csv.DictReader(f))
 
 
-L = {r["key"]: r["value"] for r in rows(ms_dir / "manuscript_claim_ledger.csv")}
-if {r["run_id"] for r in rows(ms_dir / "manuscript_claim_ledger.csv")} != {run.name}:
+L = {r["key"]: r["value"] for r in rows(led_dir / "manuscript_claim_ledger.csv")}
+if {r["run_id"] for r in rows(led_dir / "manuscript_claim_ledger.csv")} != {run.name}:
     sys.exit("Ledger run does not match " + run.name)
-L.update({r["key"]: r["value"] for r in rows(jwm_dir / "jwm_extra_numbers.csv")})
+L.update({r["key"]: r["value"] for r in rows(num_dir / "jwm_extra_numbers.csv")})
 L.update({r["key"]: r["value"] for r in rows(rev / "revision_numbers_stage2.csv")})
 L.update({r["key"]: r["value"] for r in rows(rev / "revision_numbers_stage2b.csv")})
+L.update({r["key"]: r["value"] for r in rows(rev / "revision_numbers_limit.csv")})
 
 
 def num(k):
@@ -59,17 +62,9 @@ L["n_stations"] = str(len(occ))
 L["n_presences"] = str(sum(r["presence"] == "1" for r in occ))
 L["n_absences"] = str(sum(r["presence"] == "0" for r in occ))
 L["prevalence"] = f"{int(L['n_presences']) / int(L['n_stations']):.3f}"
-L["domain_excluded_km2"] = str(round(num("bhutan_km2_on_grid") - num("domain_km2")))
 L["present_suitable_outside_pa_pct"] = f"{100 - num('present_suitable_in_pa_pct'):.1f}"
 L["present_suitable_outside_pa_km2"] = str(round(num("present_suitable_km2") - num("present_suitable_in_pa_km2")))
 L["refugia_core_outside_pa_pct"] = f"{100 - num('refugia_core_in_pa_pct'):.1f}"
-sens_dir = ms_dir / "sensitivity_no_dist_pa"
-sens = rows(sens_dir / "claim_ledger_no_dist_pa.csv")
-L["sens_run_id"] = sens[0]["run_id"]
-L.update({"sens_" + r["key"]: r["value"] for r in sens})
-L["sens_present_suitable_outside_pa_pct"] = f"{100 - num('sens_present_suitable_in_pa_pct'):.1f}"
-L["sens_refugia_core_outside_pa_pct"] = f"{100 - num('sens_refugia_core_in_pa_pct'):.1f}"
-L.update({r["key"]: r["value"] for r in rows(sens_dir / "map_agreement.csv")})
 changes = [num(k) for k in L if k.startswith("future_change_pct_")]
 L["future_mean_change_min"] = f"{min(changes):.1f}"
 L["future_mean_change_max"] = f"{max(changes):.1f}"
@@ -101,8 +96,8 @@ for r in thr_t:
     tag = tags.get(r["threshold"], "thr0")
     for k, v in r.items():
         L[f"{tag}_{k}"] = f"{float(v):.1f}" if ("pct" in k or "jaccard" not in k and "threshold" not in k and "km2" not in k) else (f"{float(v):.3f}" if "jaccard" in k else str(round(float(v))))
-VARIANTS = [("distance_fixed", "Corrected distance layers"), ("no_dung", "Without dung records"), ("tiger_only", "National Tiger Survey only"),
-            ("time_aligned", "Without time-mismatched layers"), ("no_human", "Without human-related predictors")]
+VARIANTS = [("no_dung", "Without dung records"), ("tiger_only", "National Tiger Survey only"), ("time_aligned", "Without time-mismatched layers"),
+            ("no_human", "Without human-related predictors"), ("no_dist_pa", "Without distance to protected areas")]
 var = {n: rows(rev_t / f"variant_{n}.csv")[0] for n, _ in VARIANTS}
 for n, r in var.items():
     for k, v in r.items():
@@ -112,17 +107,17 @@ for n, r in var.items():
         L[f"var_{n}_{k}"] = (str(round(x)) if ("km2" in k or k in ("stations", "presences", "predictors", "n_loss")) else
                              f"{x:.1f}" if ("pct" in k or "change" in k) else f"{x:.3f}")
 L["var_no_human_overlap_pct"] = f"{100 * float(var['no_human']['exposure_top15_overlap']):.1f}"
-sens_out = float(L["sens_present_suitable_outside_pa_pct"]); sens_core = float(L["sens_refugia_core_outside_pa_pct"])
-vo = [float(r["habitat_outside_pa_pct"]) for r in var.values()] + [sens_out]
-vc = [float(r["core_outside_pa_pct"]) for r in var.values()] + [sens_core]
-vk = [float(r["core_km2"]) for r in var.values()] + [float(L["sens_refugia_core_km2"])]
-vn = [float(r["n_loss"]) for r in var.values()] + [float(L["sens_per_gcm_n_projections_loss"])]
+vo = [float(r["habitat_outside_pa_pct"]) for r in var.values()]
+vc = [float(r["core_outside_pa_pct"]) for r in var.values()]
+vk = [float(r["core_km2"]) for r in var.values()]
+vn = [float(r["n_loss"]) for r in var.values()]
 vr = [float(r["primary_core_retained_pct"]) for r in var.values()]
 to = [float(r["habitat_outside_pa_pct"]) for r in thr_t]; tc = [float(r["core_outside_pa_pct"]) for r in thr_t]
+lo, lc = float(L["limit_detect_habitat_outside_pct"]), float(L["limit_detect_core_outside_pct"])
 L["thr_outside_min"], L["thr_outside_max"] = f"{min(to):.1f}", f"{max(to):.1f}"
 L["var_outside_min"], L["var_outside_max"] = f"{min(vo):.1f}", f"{max(vo):.1f}"
-L["habitat_outside_min"], L["habitat_outside_max"] = f"{min(to + vo):.1f}", f"{max(to + vo):.1f}"
-L["core_outside_min"], L["core_outside_max"] = f"{min(tc + vc):.1f}", f"{max(tc + vc):.1f}"
+L["habitat_outside_min"], L["habitat_outside_max"] = f"{min(to + vo + [lo]):.1f}", f"{max(to + vo + [lo]):.1f}"
+L["core_outside_min"], L["core_outside_max"] = f"{min(tc + vc + [lc]):.1f}", f"{max(tc + vc + [lc]):.1f}"
 L["var_core_min"], L["var_core_max"] = str(round(min(vk))), str(round(max(vk)))
 L["var_core_out_min"], L["var_core_out_max"] = f"{min(vc):.1f}", f"{max(vc):.1f}"
 L["var_retained_min"], L["var_retained_max"] = f"{min(vr):.1f}", f"{max(vr):.1f}"
@@ -152,11 +147,28 @@ def fmt(v):
     return out.replace("-", "−", 1) if out.startswith("-") else out
 
 
+ONE_DEC = re.compile(r"pct|^(habitat|core|thr|var|var_core)_(outside|out)_(min|max)$|^var_core_out_|^var_retained_|^lu_")
+THREE_DEC = re.compile(r"^(cr|pd|boot|occu)_")
+
+
+def show(k):
+    """Keep the decimals the source reports, which R drops from round numbers."""
+    v = L[k]
+    if ONE_DEC.search(k):
+        try:
+            return f"{float(v):.1f}".replace("-", "−", 1)
+        except ValueError:
+            pass
+    if THREE_DEC.search(k) and "." in v and "share" not in k:
+        return fmt(re.sub(r"\b\d\.\d+", lambda n: f"{float(n.group(0)):.3f}", v))
+    return fmt(v)
+
+
 def fill(text):
     missing = sorted(set(k for k in re.findall(r"\{\{(\w+)\}\}", text) if k not in L))
     if missing:
         sys.exit("Missing ledger keys: " + ", ".join(missing))
-    text = re.sub(r"\{\{(\w+)\}\}", lambda m: L[m.group(1)] if ("year" in m.group(1) or m.group(1) == "threshold_exact") else fmt(L[m.group(1)]), text)
+    text = re.sub(r"\{\{(\w+)\}\}", lambda m: L[m.group(1)] if ("year" in m.group(1) or m.group(1) == "threshold_exact") else show(m.group(1)), text)
     return text.replace("+-", "−").replace("%–-", "% to −")
 
 
@@ -261,23 +273,23 @@ T3 = table(["Pathway", "Period", "GCM-mean map (km²)", "Change, GCM mean (%)", 
 T4 = table(["Category", "Definition", "Area (km²)", "% of modeled habitat", "% inside network", "Outside network (km²)",
             "% in top quarter of human pressure"],
            [["Modeled habitat", f"Ensemble score ≥{L['threshold']}", fmt(L["present_suitable_km2"]), "100",
-             L["present_suitable_in_pa_pct"], fmt(L["present_suitable_outside_pa_km2"]), L["hp_habitat_top25_pct"]],
-            ["High-stability area", "Suitable in ≥45 of 60 projections", fmt(L["refugia_high_km2"]), L["refugia_high_pct_present"],
-             L["refugia_high_in_pa_pct"], fmt(L["refugia_high_outside_pa_km2"]), "–"],
-            ["Candidate core refugia", "Suitable in all 60 projections", fmt(L["refugia_core_km2"]), L["refugia_core_pct_present"],
-             L["refugia_core_in_pa_pct"], fmt(L["refugia_core_outside_pa_km2"]), L["hp_core_top25_pct"]],
+             show("present_suitable_in_pa_pct"), fmt(L["present_suitable_outside_pa_km2"]), show("hp_habitat_top25_pct")],
+            ["High-stability area", "Suitable in ≥45 of 60 projections", fmt(L["refugia_high_km2"]), show("refugia_high_pct_present"),
+             show("refugia_high_in_pa_pct"), fmt(L["refugia_high_outside_pa_km2"]), "–"],
+            ["Candidate core refugia", "Suitable in all 60 projections", fmt(L["refugia_core_km2"]), show("refugia_core_pct_present"),
+             show("refugia_core_in_pa_pct"), fmt(L["refugia_core_outside_pa_km2"]), show("hp_core_top25_pct")],
             ["Core refugia within sampled climate", "Also never extrapolated in the 60 projections", fmt(L["core_never_extrap_km2"]),
              f"{100 * num('core_never_extrap_km2') / num('present_suitable_km2'):.1f}", f"{100 - num('core_never_extrap_outside_pa_pct'):.1f}", fmt(L["core_never_extrap_outside_pa_km2"]), "–"]],
            f"Table 5. Modeled habitat and candidate climate refugia for {PLACE}, with coverage by the protected-area network and overlap "
            f"with human pressure. Projections are 5 general circulation models × 4 pathways × 3 periods, 2021–2100.",
-           ["The network comprises national parks, wildlife sanctuaries, the strict nature reserve, and biological corridors. Human pressure uses the corrected building layer."])
+           ["The network comprises national parks, wildlife sanctuaries, the strict nature reserve, and biological corridors."])
 
-r5 = [["Primary model", L["threshold"], fmt(L["present_suitable_km2"]), L["present_suitable_outside_pa_pct"], fmt(L["refugia_core_km2"]), L["refugia_core_outside_pa_pct"], "100", L["per_gcm_n_projections_loss"]]]
+r5 = [["Primary model", L["threshold"], fmt(L["present_suitable_km2"]), show("present_suitable_outside_pa_pct"), fmt(L["refugia_core_km2"]), show("refugia_core_outside_pa_pct"), "100", L["per_gcm_n_projections_loss"]]]
 for tag, lab in [("thr010", "0.10"), ("thr015", "0.15"), ("thr020", "0.20")]:
     r5.append([f"Threshold {lab}", lab, fmt(L[f"{tag}_habitat_km2"]), L[f"{tag}_habitat_outside_pa_pct"], fmt(L[f"{tag}_core_km2"]), L[f"{tag}_core_outside_pa_pct"], L[f"{tag}_primary_core_retained_pct"], "–"])
 for n, lab in VARIANTS:
     r5.append([lab, L[f"var_{n}_threshold"], fmt(L[f"var_{n}_habitat_km2"]), L[f"var_{n}_habitat_outside_pa_pct"], fmt(L[f"var_{n}_core_km2"]), L[f"var_{n}_core_outside_pa_pct"], L[f"var_{n}_primary_core_retained_pct"], L[f"var_{n}_n_loss"]])
-r5.append(["Without distance to protected areas", c(L["sens_threshold"]), fmt(L["sens_present_suitable_km2"]), L["sens_present_suitable_outside_pa_pct"], fmt(L["sens_refugia_core_km2"]), L["sens_refugia_core_outside_pa_pct"], "–", L["sens_per_gcm_n_projections_loss"]])
+r5.append([f"Maps limited to highest detection ({fmt(L['presence_elevation_max_m'])} m)", L["threshold"], fmt(L["limit_detect_habitat_km2"]), show("limit_detect_habitat_outside_pct"), fmt(L["limit_detect_core_km2"]), show("limit_detect_core_outside_pct"), "–", "–"])
 T5 = table(["Analysis", "Threshold", "Modeled habitat (km²)", "% outside network", "Core refugia (km²)", "% of core outside network", "% of primary core retained", "Projections with net loss (of 60)"], r5,
            f"Table 3. Robustness of modeled habitat and candidate core refugia for {PLACE} to the classification threshold and to data and predictor choices. Each refit used its own threshold and all 60 projections.")
 
@@ -290,16 +302,16 @@ FIGS = [
     ("Figure_3_response_curves", "Figure_3_response_curves",
      f"Partial dependence of the predicted probability of recorded Asian elephant presence on 6 leading predictors in Bhutan, from {fmt(L['n_stations'])} stations surveyed in 2016 and 2021–2022. Lines show the mean prediction across all stations when the predictor is set to each value, for each algorithm and their equal-weight ensemble. Axes span the 2nd–98th percentiles of station values. Precipitation seasonality is the coefficient of variation of monthly precipitation."),
     ("main_figure_03_present_suitability", "Figure_4_present_suitability",
-     f"Present suitability score for Asian elephants in Bhutan (equal-weight ensemble of generalized linear model, random forest, and boosted regression trees; 1986–2015 climate). Yellow lines are protected-area and biological-corridor boundaries; blank cells lie outside the modeled domain. The classification threshold is {L['threshold']}. Scores represent recorded presence under the survey designs, not occupancy. Projection: World Geodetic System 1984, Universal Transverse Mercator zone 45N."),
+     f"Present suitability score for Asian elephants in Bhutan (equal-weight ensemble of generalized linear model, random forest, and boosted regression trees; 1986–2015 climate). Yellow lines are protected-area and biological-corridor boundaries; blank cells lie outside the modeled domain, which has complete predictor data at or below 3,000 m. The classification threshold is {L['threshold']}. Scores represent recorded presence under the survey designs, not occupancy. Projection: World Geodetic System 1984, Universal Transverse Mercator zone 45N."),
     ("main_figure_04_future_habitat_area", "Figure_5_future_habitat_area",
      f"Climate-driven projections of classified suitable area for Asian elephants in Bhutan by shared socioeconomic pathway (SSP) and period, 2021–2100, with non-climatic predictors held at present values. Colored lines are the 5 general circulation models (GCM); the black line is the median across GCMs; the dotted line is the present area ({fmt(L['present_suitable_km2'])} km²)."),
     ("main_figure_05_refugia_stability", "Figure_6_refugia_stability",
      "Stability of present modeled Asian elephant habitat in Bhutan across 60 future projections (5 general circulation models × 4 shared socioeconomic pathways × 3 periods, 2021–2100): the fraction of projections in which each currently suitable cell remains suitable. Cells with value 1 are candidate core refugia. Green lines are protected-area and biological-corridor boundaries."),
     ("main_figure_06_interaction_exposure", "Figure_7_interaction_exposure",
-     f"Potential human–elephant interaction exposure in Bhutan at present: the geometric mean of the rescaled suitability score and human pressure (corrected building layer). The index describes co-occurrence and is not a fitted or validated conflict-risk model. White points are {L['hwc_inside_bhutan']} geolocated elephant-conflict incidents recorded opportunistically in the Spatial Monitoring and Reporting Tool by the Department of Forests and Park Services in {L['hwc_year_min_domain']}–{L['hwc_year_max_domain']}, shown for context only. Gray lines are district (Dzongkhag) boundaries; green lines are protected areas."),
+     f"Potential human–elephant interaction exposure in Bhutan at present: the geometric mean of the rescaled suitability score and human pressure. The index describes co-occurrence and is not a fitted or validated conflict-risk model. White points are {L['hwc_inside_bhutan']} geolocated elephant-conflict incidents recorded opportunistically in the Spatial Monitoring and Reporting Tool by the Department of Forests and Park Services in {L['hwc_year_min_domain']}–{L['hwc_year_max_domain']}, shown for context only. Gray lines are district (Dzongkhag) boundaries; green lines are protected areas."),
 ]
 
-ms = fill((src / "manuscript_jwm_revised.md").read_text(encoding="utf-8"))
+ms = fill((src / "manuscript_jwm_corrected.md").read_text(encoding="utf-8"))
 old_ms = (src / "manuscript_jwm.md").read_text(encoding="utf-8")
 refs_block = old_ms.split("# REFERENCES", 1)[1]
 refs_block = refs_block.replace("Hao, T., J. Elith,", "Fiske, I., and R. Chandler. 2011. unmarked: an R package for fitting hierarchical models of wildlife occurrence and abundance. Journal of Statistical Software 43(10):1–23.\n\nHao, T., J. Elith,", 1)
@@ -322,18 +334,19 @@ def si_ref(m):
     seen.add(name)
     return name + (", available in Supporting Information" if first else "")
 ms = re.sub(r"\[\[(S|F|A):(\w+)\]\]", si_ref, ms)
+ms = re.sub(r"Table S(\d+), available in Supporting Information; Table S(\d+), available in Supporting Information", r"Tables S\1 and S\2, available in Supporting Information", ms)
 head, body_main = ms.split("The Asian elephant (*Elephas maximus*) is listed", 1)
 ms = '::: {custom-style="Front"}\n' + head + "\n:::\n\nThe Asian elephant (*Elephas maximus*) is listed" + body_main
 caps = "\n\n".join(f"Figure {i}. {f[2]}" for i, f in enumerate(FIGS, 1))
 ms += "\n" + PAGE + '\n::: {custom-style="Heading 1"}\nFigure Captions\n:::\n\n::: {custom-style="Front"}\n' + caps + "\n:::\n"
 ms += "\n" + T1 + "\n" + T2 + "\n" + T5 + "\n" + T3 + "\n" + T4
-(src / "manuscript_jwm_revised_filled.md").write_text(ms, encoding="utf-8")
+(src / "manuscript_jwm_corrected_filled.md").write_text(ms, encoding="utf-8")
 
 # ── Figures for upload ───────────────────────────────────────────────────
 fig_out.mkdir(parents=True, exist_ok=True)
 Image.MAX_IMAGE_PIXELS = None
 for stem, name, _ in FIGS:
-    p = next(q for q in (rev / "figures" / f"{stem}.png", rev / "figures" / f"{name}.png", fig_work / f"{stem}.png", fig_in / f"{stem}.png") if q.exists())
+    p = next(q for q in (rev / "figures" / f"{stem}.png", rev / "figures" / f"{name}.png", fig_work / f"{stem}.png", tab_dir / f"{stem}.png") if q.exists())
     Image.open(p).convert("RGB").save(fig_out / f"{name}.tif", compression="tiff_lzw", dpi=(600, 600))
 im = Image.open(tab_dir / "figure_s10_mess_map.png").convert("RGB")
 fig_s1 = rev / "figures" / "Figure_novelty.png"
@@ -342,7 +355,7 @@ im.crop((0, 540, im.width, 1750)).save(fig_s1, dpi=(300, 300))
 # ── Supporting Information ───────────────────────────────────────────────
 S = ['::: {custom-style="SIHeading"}\nSupporting Information\n:::', DATE,
      f"Wangdi, and L. Sagar. 2026. {TITLE}. Journal of Wildlife Management.",
-     f"Results derive from accepted analysis run `{run.name}`, a second run without distance to protected areas (`{L['sens_run_id']}`), and revision analyses that read those outputs without altering them. Recorded presence means an elephant detection or dung record at a station; non-detection means an active camera with no detection and is not assumed to be a true absence."]
+     f"Results derive from primary analysis run `{run.name}` and sensitivity analyses that read its outputs without altering them. Recorded presence means an elephant detection or dung record at a station; non-detection means an active camera with no detection and is not assumed to be a true absence."]
 
 exc = rows(Path("01_data_raw/01_occurrences/occurrence_exclusions.csv"))
 n_out = [r for r in exc if r["exclusion_reason"] == "outside_bhutan_boundary"]
@@ -386,7 +399,7 @@ t = rows(tab_dir / "table_16_threshold_sensitivity.csv")
 S.append(table(["Threshold", "Suitable area (km²)", "% of domain"],
                [[r["Threshold"] + (" (primary, rounded)" if r["Is_current"] == "TRUE" else ""), fmt(r["Area_km2"]), r["Pct_suitable"]] for r in t],
                "Table S5. Sensitivity of present Asian elephant habitat area in Bhutan to the classification threshold.",
-               [f"Areas use the threshold rounded to 3 decimals. The main text uses the exact threshold ({L['threshold_exact']}), which gives {L['area_at_exact_threshold_km2']} km²; rounding it to 0.134 gives {L['area_at_rounded_threshold_km2']} km²."]))
+               [f"Areas use the threshold rounded to 3 decimals. The main text uses the exact threshold ({L['threshold_exact']}), which gives {L['area_at_exact_threshold_km2']} km²; rounding it to {L['threshold']} gives {L['area_at_rounded_threshold_km2']} km²."]))
 
 t = rows(run / "05_change_metrics" / "habitat_area_change_summary.csv")
 body = []
@@ -405,14 +418,13 @@ get = {(r["Algorithm"], r["Predictor"]): r["Relative_importance_pct"] for r in v
 preds.sort(key=lambda p: -sum(float(get.get((a, p), 0)) for a in ("GLM", "RF", "BRT")))
 S.append(table(["Predictor", "Generalized linear model", "Random forest", "Boosted regression trees"],
                [[plain(p)] + [c(get.get((a, p), "nan"), 1) for a in ("GLM", "RF", "BRT")] for p in preds],
-               "Table S7. Relative importance of predictors of recorded Asian elephant presence in Bhutan within each algorithm (maximum = 100).",
-               ["Importance is from the accepted models, which used the uncorrected layers for distance to buildings and to registered private land."]))
+               "Table S7. Relative importance of predictors of recorded Asian elephant presence in Bhutan within each algorithm (maximum = 100)."))
 
 t = rows(tab_dir / "table_19_predictor_statistics.csv")
 S.append(table(["Predictor", "Presences: median", "Presences: mean ± SD", "Absences: median", "Absences: mean ± SD"],
                [[plain(r["Predictor"]), r["Pres_median"], f"{r['Pres_mean']} ± {r['Pres_SD']}", r["Bg_median"], f"{r['Bg_mean']} ± {r['Bg_SD']}"] for r in t],
                f"Table S8. Predictor values at Asian elephant presence and absence stations in Bhutan ({L['n_presences']} presences, {L['n_absences']} absences).",
-               ["Distances are in meters, temperature in °C, and precipitation of the warmest quarter and driest month in mm; precipitation seasonality is a coefficient of variation (%). Distance to buildings and to registered private land are the uncorrected layers used by the accepted models."]))
+               ["Distances are in meters, temperature in °C, and precipitation of the warmest quarter and driest month in mm; precipitation seasonality is a coefficient of variation (%)."]))
 
 t = rows(tab_dir / "table_24_dzongkhag_suitability.csv")
 S.append(table(["District (Dzongkhag)", "Modeled area (km²)", "Suitable (km²)", "% suitable", "Mean suitability"],
@@ -420,19 +432,19 @@ S.append(table(["District (Dzongkhag)", "Modeled area (km²)", "Suitable (km²)"
                "Table S9. Present classified suitable area for Asian elephants by district in Bhutan (districts with any suitable area).",
                [f"Rows sum to {L['district_sum_km2']} km². The national total is {L['habitat_total_km2_exact']} km² because {L['habitat_outside_all_districts_km2']} km² of cells fall outside every district polygon along the national boundary; rows are also rounded to 0.1 km²."]))
 
-t = rows(ms_dir / "manuscript_claim_ledger_pa_units.csv")
+t = rows(led_dir / "manuscript_claim_ledger_pa_units.csv")
 S.append(table(["Protected area or corridor", "Modeled area (km²)", "Suitable habitat (km²)", "% suitable"],
                [[r["unit"], fmt(round(float(r["unit_km2"]))), fmt(round(float(r["suitable_km2"]))),
                  f"{100 * float(r['suitable_km2']) / float(r['unit_km2']):.1f}" if float(r["unit_km2"]) > 0 else "–"] for r in t],
                "Table S10. Present classified suitable area for Asian elephants by protected area and biological corridor in Bhutan.",
-               [f"Unrounded rows sum to {L['pa_unit_sum_raw_km2']} km², matching the network union and the 2,218 km² in the main text. Rounded rows sum to {L['pa_unit_sum_rounded_rows_km2']} km²."]))
+               [f"Unrounded rows sum to {L['pa_unit_sum_raw_km2']} km², matching the network union and the {fmt(L['present_suitable_in_pa_km2'])} km² in the main text. Rounded rows sum to {L['pa_unit_sum_rounded_rows_km2']} km²."]))
 
 t = rows(rev_t / "exposure_by_scenario_corrected.csv")
 S.append(table(["Pathway", "Period", "Mean exposure index"],
                [[r["pathway"], r["period"].replace("-", "–"), c(r["mean_exposure"])] for r in t],
-               "Table S13. National mean potential human–elephant interaction-exposure index in Bhutan, present and future, with human pressure held at present values and the corrected building layer."))
+               "Table S13. National mean potential human–elephant interaction-exposure index in Bhutan, present and future, with human pressure held at present values."))
 
-t = rows(ms_dir / "manuscript_claim_ledger_gcm_trajectories.csv")
+t = rows(led_dir / "manuscript_claim_ledger_gcm_trajectories.csv")
 body = []
 for s in SSP:
     for p in PER:
@@ -441,30 +453,24 @@ for s in SSP:
 S.append(table(["Pathway", "Period"] + list(GCM.values()), body,
                "Table S12. Classified suitable area for Asian elephants in Bhutan (km²) and change from present (%) for each general circulation model, 2021–2100, with non-climatic predictors held constant."))
 
-S13 = [("Ensemble AUC (spatial held-out predictions)", "ensemble_auc_mean"), ("Ensemble TSS (spatial held-out predictions)", "ensemble_tss_mean"),
-       ("Ensemble Boyce index", "ensemble_boyce"), ("Classification threshold", "threshold"),
-       ("Present habitat (km²)", "present_suitable_km2"), ("Present habitat inside network (%)", "present_suitable_in_pa_pct"),
-       ("Present habitat outside network (%)", "present_suitable_outside_pa_pct"),
-       ("Core refugia, suitable in 60 of 60 projections (km²)", "refugia_core_km2"),
-       ("Core refugia outside network (%)", "refugia_core_outside_pa_pct"),
-       ("High-stability habitat, ≥45 of 60 (km²)", "refugia_high_km2"),
-       ("Projections with net loss (of 60)", "per_gcm_n_projections_loss"),
-       ("Range of change across projections (%)", None),
-       ("Median across models, SSP5-8.5, 2071–2100 (%)", "future_gcm_median_change_pct_ssp585_2071_2100")]
-body = []
-for label, k in S13:
-    if k is None:
-        body.append([label, f"{fmt(L['per_gcm_change_pct_min'])} to +{fmt(L['per_gcm_change_pct_max'])}",
-                     f"{fmt(L['sens_per_gcm_change_pct_min'])} to +{fmt(L['sens_per_gcm_change_pct_max'])}"])
-    elif k in ("ensemble_boyce", "threshold"):
-        body.append([label, c(L[k]), c(L["sens_" + k])])
-    else:
-        body.append([label, fmt(L[k]), fmt(L["sens_" + k])])
+dp = "var_no_dist_pa_"
+dpj = rows(rev_t / "variant_no_dist_pa_projections.csv")
+dpm = sorted(float(r["change_pct"]) for r in dpj if r["ssp"] == "ssp585" and r["period"] == "2071_2100")[2]
+body = [["Ensemble AUC (spatial held-out predictions)", L["ensemble_auc_mean"], L[dp + "auc"]],
+        ["Ensemble TSS (spatial held-out predictions)", L["ensemble_tss_mean"], L[dp + "tss"]],
+        ["Classification threshold", c(L["threshold"]), L[dp + "threshold"]],
+        ["Present habitat (km²)", fmt(L["present_suitable_km2"]), fmt(L[dp + "habitat_km2"])],
+        ["Present habitat outside network (%)", L["present_suitable_outside_pa_pct"], L[dp + "habitat_outside_pa_pct"]],
+        ["Core refugia, suitable in 60 of 60 projections (km²)", fmt(L["refugia_core_km2"]), fmt(L[dp + "core_km2"])],
+        ["Core refugia outside network (%)", L["refugia_core_outside_pa_pct"], L[dp + "core_outside_pa_pct"]],
+        ["High-stability habitat, ≥45 of 60 (km²)", fmt(L["refugia_high_km2"]), fmt(L[dp + "high_km2"])],
+        ["Projections with net loss (of 60)", L["per_gcm_n_projections_loss"], L[dp + "n_loss"]],
+        ["Range of change across projections (%)", f"{fmt(L['per_gcm_change_pct_min'])} to +{fmt(L['per_gcm_change_pct_max'])}", f"{fmt(L[dp + 'change_min'])} to +{fmt(L[dp + 'change_max'])}"],
+        ["Median across models, SSP5-8.5, 2071–2100 (%)", fmt(L["future_gcm_median_change_pct_ssp585_2071_2100"]), fmt(f"{dpm:.1f}")]]
 S.append(table(["Quantity", "Primary model", "Without distance to protected areas"], body,
                f"Table S11. Sensitivity of the main results for Asian elephants in Bhutan to removing distance to protected areas as a predictor. {AUC_DEF}.",
-               [f"The sensitivity run (`{L['sens_run_id']}`) was identical to the accepted run (`{run.name}`) except for this predictor, "
-                f"and repeated all 60 projections. Agreement of present-day suitability maps: Pearson *r* = {L['map_pearson_r']}, "
-                f"Schoener's *D* = {L['map_schoener_d']}; Jaccard overlap of habitat maps = {L['map_jaccard']}."]))
+               [f"The refit used the primary folds, settings, and seed, its own threshold, and all 60 projections. Agreement of present-day suitability maps: Pearson *r* = {L[dp + 'map_r']}, "
+                f"Schoener's *D* = {L[dp + 'schoener_d']}; Jaccard overlap of habitat maps = {L[dp + 'habitat_jaccard']}."]))
 
 OLD = {"S1": "records", "S2": "candidates", "S3": "settings", "S4": "folds", "S5": "thrarea", "S6": "gainloss", "S7": "importance",
        "S8": "stats", "S9": "districts", "S10": "units", "S11": "distpa", "S12": "gcm", "S13": "exposure"}
@@ -487,7 +493,7 @@ SI["timing"] = table(["Data layer", "Period", "Relation to surveys", "Treatment"
     [["Climate", "1986–2015", "Before both surveys", "Retained; a long-term baseline"], ["National Elephant Survey", "2016", "–", "Response"], ["National Tiger Survey", "2021–2022", "–", "Response"],
      ["Enhanced vegetation index", "2000–2024 mean", "Spans both surveys; includes later years", "Tested by removal"], ["Human Impact Index", "2020", "After elephant survey; before tiger survey", "Tested by removal"],
      ["Dynamic World land cover", "2025", "After both surveys", "Tested by removal"], ["Protected-area boundaries", "2023 version", "After both surveys", "Tested by removal of distance predictor"],
-     ["Building footprints, roads, private land", "Not documented in project files", "Unknown", "Year needs confirmation; held constant"], ["Land use within habitat", "2020", "After elephant survey; before tiger survey", "Descriptive only"]],
+     ["Land use within habitat", "2020", "After elephant survey; before tiger survey", "Descriptive only"]],
     "Table S0. Timing of data layers relative to the National Elephant Survey (2016) and National Tiger Survey (2021–2022) of Asian elephants in Bhutan.",
     ["No earlier rasters of land cover or human pressure were available in the project to align predictors with each survey. Annual and monthly covariate files covered only 2022 at a subset of stations."])
 pd_ = sorted(rows(rev_t / "retained_predictor_diagnostics.csv"), key=lambda r: -float(r["vif"]))
@@ -499,7 +505,7 @@ SI["moranband"] = table(["Distance band (km)", "Station pairs", "Moran's *I*"], 
 SI["blocks"] = table(["Block size (km)", "Blocks", "AUC", "TSS, tuned", "TSS, cross-fitted", "TSS, nested", "AUC within range", "AUC, elephant survey", "Test stations with training station <5 km (%)"],
     [[r["block_km"], r["n_blocks"], c(r["auc"]), c(r["tss_pooled_opt"]), c(r["tss_crossfit"]), c(r["tss_nested"]), c(r["auc_within"]), c(r["auc_elephant"]), c(r["nearest_train_lt5km_pct"], 1)] for r in cv],
     f"Table S0. Discrimination of the equal-weight ensemble for recorded Asian elephant presence in Bhutan under alternative spatial block sizes. {AUC_DEF}.",
-    ["TSS, tuned uses the threshold that maximizes TSS on the pooled held-out predictions. Cross-fitted thresholds come from the other folds' held-out predictions, and nested thresholds from inner cross-validation of training data only. Within range means at or below the highest detection. The 15-km row is a rerun; stochastic differences from the accepted run are small."])
+    ["TSS, tuned uses the threshold that maximizes TSS on the pooled held-out predictions. Cross-fitted thresholds come from the other folds' held-out predictions, and nested thresholds from inner cross-validation of training data only. Within range means at or below the highest detection. The 15-km row is a rerun; stochastic differences from the primary run are small."])
 SI["blocks2"] = table(["Block size (km)", "Realized block (km)", "Nested threshold range", "Brier score", "Calibration slope", "Moran's *I*"],
     [[r["block_km"], f"{float(r['width_km']):.1f} × {float(r['height_km']):.1f}", f"{c(r['threshold_nested_min'])}–{c(r['threshold_nested_max'])}", c(r["brier"]), c(r["calibration_slope"], 2), c(r["moran5"])] for r in cv],
     "Table S0. Block dimensions, nested thresholds, calibration, and residual autocorrelation (5 nearest neighbors, projected distance) of the ensemble under alternative spatial block sizes, Asian elephant stations in Bhutan.")
@@ -509,9 +515,9 @@ SI["buffer"] = table(["Buffer (km)", "Mean training stations removed per fold", 
     ["Buffering also reduces training data, so it gives a lower estimate of the skill of the full model."])
 top_t = {r["threshold"]: r["core_top25_km2"] for r in rows(rev_t / "threshold_top25_corrected.csv")}
 SI["threshold"] = table(["Threshold", "Habitat (km²)", "Habitat outside network (%)", "Core refugia (km²)", "Core outside network (%)", "Core outside network (km²)", "Core in top quarter of human pressure (km²)", "Jaccard overlap with primary core", "Core within sampled climate (km²)"],
-    [[f"{float(r['threshold']):.3f}" if abs(float(r["threshold"]) - 0.134) < 0.01 else r["threshold"], fmt(round(float(r["habitat_km2"]))), c(r["habitat_outside_pa_pct"], 1), fmt(round(float(r["core_km2"]))), c(r["core_outside_pa_pct"], 1), fmt(round(float(r["core_outside_pa_km2"]))), fmt(round(float(top_t[r["threshold"]]))), c(r["core_jaccard_vs_primary"]), fmt(round(float(r["core_never_extrapolated_km2"])))] for r in thr_t],
+    [[f"{float(r['threshold']):.3f}" if r["threshold"] not in tags else r["threshold"], fmt(round(float(r["habitat_km2"]))), c(r["habitat_outside_pa_pct"], 1), fmt(round(float(r["core_km2"]))), c(r["core_outside_pa_pct"], 1), fmt(round(float(r["core_outside_pa_km2"]))), fmt(round(float(top_t[r["threshold"]]))), c(r["core_jaccard_vs_primary"]), fmt(round(float(r["core_never_extrapolated_km2"])))] for r in thr_t],
     "Table S0. Sensitivity of modeled habitat and candidate core refugia for Asian elephants in Bhutan to the classification threshold, across all 60 projections.",
-    ["Human pressure uses the corrected building layer. Core within sampled climate means never extrapolated in the 60 projections."])
+    ["Core within sampled climate means never extrapolated in the 60 projections."])
 ex_t = rows(rev_t / "core_refugia_extrapolation_classes.csv")
 SI["extrap"] = table(["Class", "Area (km²)", "% of core refugia", "% outside network"], [[r["class"].replace("1-30", "1–30").replace("31-59", "31–59"), fmt(round(float(r["km2"]))), c(r["pct_of_core"], 1), c(r["outside_pa_pct"], 1)] for r in ex_t],
     "Table S0. Candidate core refugia for Asian elephants in Bhutan by the number of the 60 projections in which each cell lay outside the climate sampled by the surveys.",
@@ -524,6 +530,12 @@ SI["conflict"] = table(["Reference cells", "Reference cells (n)", "Score", "AUC"
     f"Table S0. Comparison of {L['hwc_inside_bhutan']} opportunistically recorded elephant-conflict incidents in Bhutan ({L['hwc_year_min_domain']}–{L['hwc_year_max_domain']}) with reference cells. AUC = probability that an incident cell scores higher than a random reference cell.",
     ["Intervals come from 2,000 bootstrap resamples of 5-km cells. Values near 0.5 mean no separation from the reference; values below 0.5 mean incidents score lower than the reference. Incidents are not a random sample of conflict, so these values are not measures of predictive accuracy."])
 
+nc_t = rows(rev_t / "nonclimate_predictor_range.csv")
+SI["nonclimate"] = table(["Predictor", "Station minimum", "Station maximum", "Modeled habitat beyond station range (%)", "Domain beyond station range (%)"],
+    [[plain(r["predictor"]), fmt(f"{float(r['station_min']):.2f}"), fmt(f"{float(r['station_max']):.2f}"), c(r["habitat_outside_range_pct"], 1), c(r["domain_outside_range_pct"], 1)] for r in nc_t],
+    "Table S0. Non-climatic predictors in modeled Asian elephant habitat in Bhutan compared with their range at surveyed stations.",
+    ["Land-cover class is omitted because it is categorical. These values are not part of the climatic novelty score. Distances are in meters."])
+
 RET = "; ".join(plain(p).lower() for p in sorted(r["predictor"] for r in pd_))
 ref = lambda k: f"[[{k}]]"
 odmap = [
@@ -534,16 +546,16 @@ odmap = [
     ["Data", "Response data", f"Recorded presence or non-detection at {fmt(L['n_stations'])} stations ({L['n_presences']} recorded presences including {L['n_dung_presences']} dung records; {L['n_absences']} non-detections), National Elephant Survey 2016 and National Tiger Survey 2021–2022; 26 records excluded"],
     ["Data", "Predictors", f"18 of 35 candidates retained after automated screening (pairwise |*r*| > 0.85, then variance inflation factor >10): {RET}"],
     ["Data", "Predictor timing", "Climate 1986–2015; enhanced vegetation index 2000–2024; Human Impact Index 2020; Dynamic World 2025; see survey timing table"],
-    ["Data", "Known data issues", f"Distance to buildings and to registered private land in the accepted models used cell-center rasterization ({L['buildings_cells_old']} of {L['buildings_cells_new']} touched building cells); corrected refit reported; land-cover class coded numerically; aspect in degrees"],
+    ["Data", "Known data issues", "Land-cover class coded numerically; aspect in degrees; polygon layers rasterized to every touched cell"],
     ["Data", "Future climate", "5 general circulation models (ACCESS-CM2, CNRM-CM6-1, INM-CM5-0, MIROC6, MPI-ESM1-2-LR) × 4 pathways × 3 periods = 60 projections"],
     ["Model", "Assumptions", "Equilibrium with climate; non-climatic predictors fixed at present values; national boundary as accessible area; non-detection treated as the 0 class but not as true absence"],
-    ["Model", "Settings", "Equal weights fixed a priori; threshold = TSS-maximizing cutoff of pooled held-out ensemble predictions; algorithm settings tabulated"],
+    ["Model", "Settings", "Equal weights fixed a priori; threshold = TSS-maximizing cutoff of pooled held-out ensemble predictions; algorithm settings tabulated; all stations used for fitting, with mapped outputs limited to ≤3,000 m"],
     ["Assessment", "Validation", f"5-fold spatial block cross-validation (15-km blocks; {L['fold_presence_min']}–{L['fold_presence_max']} presences per fold); block sizes 10–30 km; buffers 5–20 km; nested and cross-fitted thresholds; AUC, TSS, Boyce index, Brier score, calibration slope, Moran's *I*; evaluation by survey and within elephant range; block-bootstrap intervals"],
-    ["Assessment", "Sensitivity", "Thresholds 0.10, 0.15, 0.20; refits with corrected distance layers, without dung records, tiger survey only, without time-mismatched layers, without human-related predictors; full analysis without distance to protected areas"],
+    ["Assessment", "Sensitivity", "Thresholds 0.10, 0.15, 0.20; maps limited to the highest detection; refits without dung records, tiger survey only, without time-mismatched layers, without human-related predictors, and without distance to protected areas"],
     ["Assessment", "Uncertainty", "Per-model areas and median; inter-model standard deviation maps; climatic novelty for every projection, with score ≤0 and 0 inside the sampled range"],
     ["Prediction", "Outputs", "Present suitability score; 60 per-model and 12 model-mean projections; refugia stability count (denominator 60); refugia classes by extrapolation"],
-    ["Prediction", "Extrapolation", f"Reported, not masked: {L['present_suitable_extrap_per_projection_median_pct']}% of present modeled habitat outside the sampled climate range in the median projection; {L['core_never_extrap_pct']}% of core refugia within sampled climate in all 60"],
-    ["Reproducibility", "Code and run", f"Scripted pipeline; accepted run `{run.name}` with input hashes, package versions, and seeds in its manifest; revision analyses in 03_analysis scripts 25–31"],
+    ["Prediction", "Extrapolation", f"Climatic novelty reported, not masked: {L['present_suitable_extrap_per_projection_median_pct']}% of present modeled habitat outside the sampled climate range in the median projection; {L['core_never_extrap_pct']}% of core refugia within sampled climate in all 60. Non-climatic predictor ranges reported separately; {L['habitat_outside_nonclimate_range_pct']}% of modeled habitat beyond them"],
+    ["Reproducibility", "Code and run", f"Scripted pipeline; primary run `{run.name}` with input hashes, package versions, and seeds in its manifest; sensitivity analyses in 03_analysis scripts 25–32"],
 ]
 SI["odmap"] = table(["ODMAP section", "Element", "Description"], odmap,
                "Appendix S1. Overview, Data, Model, Assessment, and Prediction (ODMAP) protocol summary for species distribution models of Asian elephants in Bhutan (Zurell et al. 2020).")
@@ -565,7 +577,7 @@ txt = "\n\n".join(out_s).replace(PAGE, "")
 for a_, b_ in [("presence and absence stations", "recorded presence and non-detection stations"), ("presences and absences", "recorded presences and non-detections"), ("Absences", "Non-detections"), (" absences", " non-detections")]:
     txt = txt.replace(a_, b_)
 txt = txt.replace("| Step | Records | Presences |", "| Step | Records | Recorded presences |")
-(src / "supplement_jwm_revised_filled.md").write_text(txt, encoding="utf-8")
+(src / "supplement_jwm_corrected_filled.md").write_text(txt, encoding="utf-8")
 
 
 # ── Word formatting ──────────────────────────────────────────────────────
@@ -692,15 +704,26 @@ def pandoc(md, out):
     subprocess.run(["pandoc", str(md), "-f", "markdown-smart", "-o", str(out), "--resource-path=."], check=True)
 
 
-outs = [(src / "manuscript_jwm_revised_filled.md", out_dir / "Manuscript_JWM_Revised.docx", dict(spacing=2.0, line_numbers=True, header="Wangdi and Sagar")),
-        (src / "supplement_jwm_revised_filled.md", out_dir / "Supporting_Information_JWM_Revised.docx", dict(spacing=1.15, line_numbers=False, header=None, table_pt=8))]
+outs = [(src / "manuscript_jwm_corrected_filled.md", out_dir / "Manuscript_JWM_Revised.docx", dict(spacing=2.0, line_numbers=True, header="Wangdi and Sagar")),
+        (src / "supplement_jwm_corrected_filled.md", out_dir / "Supporting_Information_JWM_Revised.docx", dict(spacing=1.15, line_numbers=False, header=None, table_pt=8))]
+L["n_si_tables"] = str(len(s_order))
+L["ga_outside_share"] = f"{float(L['present_suitable_outside_pa_pct']):.0f}"
+for name, target in [("cover_letter_jwm_corrected", "Cover_Letter_JWM.docx"), ("data_availability_jwm_corrected", "Data_Availability_Statement_JWM.docx"),
+                     ("graphical_abstract_text_jwm_corrected", "Graphical_Abstract_Text_JWM.docx"), ("author_review_jwm_corrected", "READ_FIRST_Author_Review.docx")]:
+    f = src / f"{name}.md"
+    filled = src / f"{name}_filled.md"
+    filled.write_text(fill(f.read_text(encoding="utf-8")), encoding="utf-8")
+    outs.append((filled, out_dir / target, dict(spacing=1.15, line_numbers=False, header=None, table_pt=10)))
+for stem in ("Graphical_abstract",):
+    Image.open(fig_work / f"{stem}.png").convert("RGB").save(fig_out / f"{stem}.tif", compression="tiff_lzw", dpi=(600, 600))
+    shutil.copy(fig_work / f"{stem}.pdf", fig_out / f"{stem}.pdf")
 for md, out, opts in outs:
     pandoc(md, out)
     finish(out, **opts)
     print("Wrote", out)
 
 # ── Guideline checks ─────────────────────────────────────────────────────
-text = (src / "manuscript_jwm_revised_filled.md").read_text(encoding="utf-8")
+text = (src / "manuscript_jwm_corrected_filled.md").read_text(encoding="utf-8")
 main = text.split("# REFERENCES")[0]
 refs_txt = text.split("# REFERENCES")[1].split("Figure Captions")[0]
 problems = []

@@ -8,6 +8,7 @@ Revision/QA_Report_Revised.csv. Exits non-zero on any failure.
 Usage (repo root): python 03_analysis/31_validate_revision.py 04_outputs/runs/RUN_<id>
 """
 import csv
+import os
 import glob
 import re
 import sys
@@ -18,10 +19,11 @@ from docx import Document
 run = Path(sys.argv[1])
 ms = Path("05_manuscripts")
 jwm = ms / "Journal of Wildlife Management"
-out = jwm / "Revision"
-rev = Path("04_outputs/revision_jwm")
-main_txt = (ms / "source" / "manuscript_jwm_revised_filled.md").read_text(encoding="utf-8")
-si_txt = (ms / "source" / "supplement_jwm_revised_filled.md").read_text(encoding="utf-8")
+out = jwm / os.environ.get("REV_DOCS", "Revision_Corrected")
+rev = Path(os.environ.get("REV_OUT", "04_outputs/revision_jwm/corrected"))
+led = rev / "ledger"
+main_txt = (ms / "source" / "manuscript_jwm_corrected_filled.md").read_text(encoding="utf-8")
+si_txt = (ms / "source" / "supplement_jwm_corrected_filled.md").read_text(encoding="utf-8")
 qa = []
 
 
@@ -56,13 +58,12 @@ def add(values, label):
             known.setdefault(f, label)
 
 
-for f in [ms / "manuscript_claim_ledger.csv", jwm / "jwm_extra_numbers.csv", rev / "revision_numbers_stage2.csv", rev / "revision_numbers_stage2b.csv",
-          ms / "sensitivity_no_dist_pa" / "claim_ledger_no_dist_pa.csv", ms / "sensitivity_no_dist_pa" / "map_agreement.csv"]:
+for f in [led / "manuscript_claim_ledger.csv", rev / "jwm" / "jwm_extra_numbers.csv", rev / "revision_numbers_stage2.csv", rev / "revision_numbers_stage2b.csv", rev / "revision_numbers_limit.csv"]:
     for r in rows(f):
         add([r["value"]], f.name)
         for tok in re.findall(r"\d+\.?\d*", str(r["value"])):
             add([tok], f.name)
-for f in glob.glob(str(rev / "tables" / "*.csv")) + [str(ms / "manuscript_claim_ledger_gcm_trajectories.csv"), str(ms / "manuscript_claim_ledger_pa_units.csv")] + glob.glob(str(run / "08_figures_tables" / "*.csv")):
+for f in glob.glob(str(rev / "tables" / "*.csv")) + [str(led / "manuscript_claim_ledger_gcm_trajectories.csv"), str(led / "manuscript_claim_ledger_pa_units.csv")] + glob.glob(str(run / "08_figures_tables" / "*.csv")):
     if "projections" in f or "novelty_by_predictor" in f:
         continue
     for r in rows(f):
@@ -72,22 +73,21 @@ for f in ["habitat_area_change_summary.csv"]:
         add(r.values(), f)
 for r in rows(run / "01_processed_data" / "spatial_block_design_sensitivity.csv"):
     add(r.values(), "spatial_block_design_sensitivity.csv")
-for r in rows(ms / "sensitivity_no_dist_pa" / "claim_ledger_no_dist_pa.csv"):
-    if r["key"] in ("present_suitable_in_pa_pct", "refugia_core_in_pa_pct"):
-        add([f"{100 - float(r['value']):.1f}"], "100 minus sensitivity inside share")
-L = {r["key"]: r["value"] for r in rows(ms / "manuscript_claim_ledger.csv")}
+L = {r["key"]: r["value"] for r in rows(led / "manuscript_claim_ledger.csv")}
 add([f"{100 - float(L['present_suitable_in_pa_pct']):.1f}", f"{100 - float(L['refugia_core_in_pa_pct']):.1f}"], "100 minus inside share")
 add([round(float(L["bhutan_km2_on_grid"]) - float(L["domain_km2"])), round(float(L["present_suitable_km2"]) - float(L["present_suitable_in_pa_km2"]))], "ledger difference")
 S2 = {r["key"]: r["value"] for r in rows(rev / "revision_numbers_stage2.csv")}
-add([f"{100 * float(S2['occu_false_nondetect_share']):.1f}", f"{100 * (46 + 23) / 102:.1f}", f"{100 * float(S2['core_never_extrap_km2']) / float(L['present_suitable_km2']):.1f}",
+add([f"{100 * float(S2['occu_false_nondetect_share']):.1f}", f"{100 * sum(int(x.split(':')[1]) for x in S2['hwc_by_district'].split() if x.split(':')[0] in ('Sarpang', 'Samdrupjongkhar')) / int(rows(rev / 'revision_numbers_stage2b.csv')[0]['value'] if False else {r['key']: r['value'] for r in rows(rev / 'revision_numbers_stage2b.csv')}['hwc_inside_bhutan']):.1f}", f"{100 * float(S2['core_never_extrap_km2']) / float(L['present_suitable_km2']):.1f}",
      f"{100 - float(S2['core_never_extrap_outside_pa_pct']):.1f}"], "derived from ledger")
 nh = rows(rev / "tables" / "variant_no_human.csv")[0]
 add([f"{100 * float(nh['exposure_top15_overlap']):.1f}"], "no_human variant")
 for r in rows(rev / "tables" / "exposure_by_scenario_corrected.csv"):
     add([f"{float(r['mean_exposure']):.3f}"], "exposure table")
-for n in ("distance_fixed", "no_dung", "tiger_only", "time_aligned", "no_human"):
+for n in ("no_dung", "tiger_only", "time_aligned", "no_human", "no_dist_pa"):
     for r in rows(rev / "tables" / f"variant_{n}.csv"):
         add(r.values(), f"variant_{n}")
+dpj = sorted(float(r["change_pct"]) for r in rows(rev / "tables" / "variant_no_dist_pa_projections.csv") if r["ssp"] == "ssp585" and r["period"] == "2071_2100")
+add([f"{dpj[2]:.1f}", f"{abs(dpj[2]):.1f}"], "variant_no_dist_pa_projections median")
 for r in rows(rev / "tables" / "threshold_refugia_sensitivity.csv"):
     add(r.values(), "threshold table")
 
@@ -96,10 +96,10 @@ add([sum(r["presence"] == "0" for r in occ if r["source"] == "station_survey"), 
 for r in rows(run / "08_figures_tables" / "table_02_predictor_selection.csv"):
     for tok in re.findall(r"\d+\.\d+", r.get("Removal_reason") or ""):
         add([tok], "table_02_predictor_selection.csv")
-for r in rows(ms / "manuscript_claim_ledger_pa_units.csv"):
+for r in rows(led / "manuscript_claim_ledger_pa_units.csv"):
     if float(r["unit_km2"]) > 0:
         add([f"{100 * float(r['suitable_km2']) / float(r['unit_km2']):.1f}"], "pa_units ledger")
-DOC = {"38394": "DoFPS 2023", "678": "NCD 2018", "605": "NCD 2018", "761": "NCD 2018", "7500": "DoFPS 2023", "100": "NCD 2018; percent; camera height", "51": "DoFPS 2023",
+DOC = {"27.4": "northern boundary of the area inspected", "38394": "DoFPS 2023", "678": "NCD 2018", "605": "NCD 2018", "761": "NCD 2018", "7500": "DoFPS 2023", "100": "NCD 2018; percent; camera height", "51": "DoFPS 2023",
        "2016": "NCD 2018", "11": "DoFPS 2023 date", "31": "DoFPS 2023 date", "21": "DoFPS 2023 date", "30": "date; block size", "2021": "dates", "2022": "dates",
        "45": "DoFPS 2023 camera height; 45 of 60", "90": "NCD 2018 days; anchor", "26.7": "study extent", "28.3": "study extent", "88.8": "study extent", "92.1": "study extent",
        "1.9": "ECS", "2.6": "ECS", "3.0": "ECS", "4.7": "ECS", "4.9": "ECS", "250": "grid", "12.5": "DEM", "1986": "baseline", "2015": "baseline", "2000": "MODIS; anchor", "2024": "MODIS",
@@ -108,9 +108,9 @@ DOC = {"38394": "DoFPS 2023", "678": "NCD 2018", "605": "NCD 2018", "761": "NCD 
        "0.75": "bag fraction", "1.5": "MaxEnt; distance", "2.2": "filled stations", "23": "filled stations", "2051": "period", "2071": "period", "2050": "period", "2080": "period", "2100": "period",
        "98": "percentile", "75": "45 of 60", "0": "bounds", "6": "design", "66": "exclusion distance", "59": "exclusion distance", "24": "exclusions", "26": "exclusions", "8": "counts", "9": "exclusions",
        "13": "exclusions", "22": "anchor", "110": "anchor", "1200": "response step", "1400": "response step", "1984": "WGS", "45N": "UTM", "3000": "elevation cut", "2023": "version",
-       "20": "buffer", "25": "block size", "95": "CI", "0.20": "threshold", "0.15": "threshold", "0.10": "threshold", "0.194": "23_validate_results", "0.174": "23_validate_results",
-       "4674": "23_validate_results", "0.3": "23_validate_results", "29.6": "23_validate_results", "21.0": "23_validate_results", "2024.0": "x", "886": "23_validate_results", "13.1": "23_validate_results",
-       "5.0": "23_validate_results", "44": "23_validate_results", "72": "23_validate_results", "1250": "23_validate_results", "1089": "23_validate_results", "2218": "ledger", "108": "stations", "150": "threshold rule; trap nights",
+       "20": "buffer", "25": "block size", "95": "CI", "0.20": "threshold", "0.15": "threshold", "0.10": "threshold", "0.174": "23_validate_results",
+       "29.6": "23_validate_results", "21.0": "23_validate_results", "2024.0": "x", "886": "23_validate_results", "13.1": "23_validate_results",
+       "5.0": "23_validate_results", "44": "23_validate_results", "72": "23_validate_results", "1250": "23_validate_results", "1089": "23_validate_results", "108": "stations", "150": "threshold rule; trap nights",
        "35": "candidates", "2840": "survey table", "4411": "survey table", "5": "design"}
 for k, v in DOC.items():
     known.setdefault(k, v)
@@ -155,7 +155,7 @@ for pat, name, n in [(r"\bFigure (\d+)", "main figures cited in order", 7), (r"\
             first.append(int(x))
     check(name, first == list(range(1, n + 1)), str(first))
 first = []
-for x in re.findall(r"\bTable S(\d+)", body):
+for x in re.findall(r"\bTable S(\d+)", re.sub(r"Tables S(\d+) and S(\d+)", r"Table S\1 Table S\2", body)):
     if int(x) not in first:
         first.append(int(x))
 check("supporting tables cited in order", first == list(range(1, len(first) + 1)), f"S1–S{len(first)}")

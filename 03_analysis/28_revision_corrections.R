@@ -11,7 +11,7 @@ suppressPackageStartupMessages({ library(terra); library(sf); library(yaml); lib
 run <- normalizePath(commandArgs(trailingOnly = TRUE)[[1]], winslash = "/", mustWork = TRUE)
 d <- function(...) file.path(run, ...)
 cfg <- read_yaml("00_governance/config.yaml")
-out <- file.path("04_outputs", "revision_jwm"); tb <- file.path(out, "tables"); cache <- file.path(out, "cache")
+out <- Sys.getenv("REV_OUT", file.path("04_outputs", "revision_jwm")); tb <- file.path(out, "tables"); cache <- file.path(out, "cache")
 led <- list(); add <- function(key, value, source = "") led[[length(led) + 1]] <<- data.frame(key = key, value = as.character(value), source = source)
 wr <- function(x, f) write.csv(x, file.path(tb, f), row.names = FALSE)
 SEED <- 123456L; FIT_SEED <- 123459L
@@ -33,8 +33,9 @@ bv <- vect(d("02_data_intermediate", "building_footprints_harmonized.gpkg"))
 lv <- vect(d("02_data_intermediate", "2022_07_01_cadastral_fixed_harmonized.gpkg"))
 b_new <- distance(rasterize(bv, template, field = 1, background = NA, touches = TRUE))
 l_new <- distance(rasterize(lv, template, field = 1, background = NA, touches = TRUE))
-b_old <- rast(d("01_processed_data", "distance_layers", "dist_to_settlements.tif"))
-l_old <- rast(d("01_processed_data", "distance_layers", "dist_to_private_land.tif"))
+old_run <- Sys.getenv("REV_OLD_RUN", run)  # run holding the cell-center layers, for the before/after comparison
+b_old <- rast(file.path(old_run, "01_processed_data", "distance_layers", "dist_to_settlements.tif"))
+l_old <- rast(file.path(old_run, "01_processed_data", "distance_layers", "dist_to_private_land.tif"))
 writeRaster(b_new, file.path(cache, "dist_to_settlements_touches.tif"), overwrite = TRUE)
 writeRaster(l_new, file.path(cache, "dist_to_private_land_touches.tif"), overwrite = TRUE)
 gv <- function(r) values(if (compareGeom(r, pres, stopOnError = FALSE)) r else project(r, pres, method = "bilinear"), mat = FALSE)[cells]
@@ -126,6 +127,25 @@ add("hwc_in_suitable_pct", round(100 * mean(hab[cidx]), 1), "SMART x habitat")
 add("hwc_near_building_pct", round(100 * mean(near_b[cidx]), 1), "SMART x corrected buildings")
 q85 <- quantile(xv, 0.85, na.rm = TRUE); add("hwc_top15_corrected_pct", round(100 * mean(xv[cidx] >= q85, na.rm = TRUE), 1), "corrected")
 add("hwc_median_pctile_corrected", round(100 * median(ecdf(xv)(xv[cidx]), na.rm = TRUE)), "corrected")
+
+# ── Upper elevation limit, remaining northern cells, non-climate predictor range ─
+kept <- !is.na(elv) & elv <= presE
+add("elev_highest_detection_m", round(presE), "stations x elevation")
+add("limit_detect_habitat_km2", round(sum(hab & kept) * cell), "habitat at or below highest detection")
+add("limit_detect_habitat_outside_pct", round(100 * mean(!pav[hab & kept]), 1), "habitat at or below highest detection")
+add("limit_detect_core_km2", round(sum(core & kept) * cell), "core at or below highest detection")
+add("limit_detect_core_outside_pct", round(100 * mean(!pav[core & kept]), 1), "core at or below highest detection")
+add("above_detect_habitat_km2", round(sum(hab & !kept, na.rm = TRUE) * cell), "habitat above highest detection")
+add("above_detect_core_km2", round(sum(core & !kept, na.rm = TRUE) * cell), "core above highest detection")
+ll <- project(xyFromCell(pres, cells), crs(pres), "EPSG:4326"); north <- hab & ll[, 2] > 27.4
+add("north_habitat_km2", round(sum(north) * cell, 1), "habitat north of 27.4 N"); add("north_core_km2", round(sum(north & core) * cell, 1), "core north of 27.4 N")
+xs <- st$static; nc <- setdiff(pcols, c(st$clim_cols, "landcover"))
+rg <- do.call(rbind, lapply(nc, function(p) { s <- ms[[p]]; lo <- min(s, na.rm = TRUE); hi <- max(s, na.rm = TRUE); v <- xs[[p]]
+  data.frame(predictor = p, station_min = lo, station_max = hi, habitat_outside_range_pct = 100 * mean((v[hab] < lo | v[hab] > hi), na.rm = TRUE), domain_outside_range_pct = 100 * mean(v < lo | v > hi, na.rm = TRUE)) }))
+wr(rg, "nonclimate_predictor_range.csv"); print(rg, row.names = FALSE, digits = 3)
+anyout <- Reduce(`|`, lapply(nc, function(p) { v <- xs[[p]]; !is.na(v) & (v < min(ms[[p]], na.rm = TRUE) | v > max(ms[[p]], na.rm = TRUE)) }))
+add("habitat_outside_nonclimate_range_pct", round(100 * mean(anyout[hab]), 1), "any non-climate predictor beyond station range")
+add("core_outside_nonclimate_range_pct", round(100 * mean(anyout[core]), 1), "any non-climate predictor beyond station range")
 
 saveRDS(list(hpv = hpv, snv = snv, cidx = cidx, settled_foothill = refs[[3]], pav = pav, top25 = top, thr = thr, primary_core = core,
              static_settle = bn, static_private = ln, st_settle = ms_b, st_private = ms_l), file.path(cache, "stage2_for_variants.rds"))

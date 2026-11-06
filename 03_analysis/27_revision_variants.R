@@ -8,7 +8,7 @@
 suppressPackageStartupMessages({ library(terra); library(ranger); library(gbm) })
 run <- normalizePath(commandArgs(trailingOnly = TRUE)[[1]], winslash = "/", mustWork = TRUE)
 d <- function(...) file.path(run, ...)
-out <- file.path("04_outputs", "revision_jwm"); tb <- file.path(out, "tables"); cache <- file.path(out, "cache")
+out <- Sys.getenv("REV_OUT", file.path("04_outputs", "revision_jwm")); tb <- file.path(out, "tables"); cache <- file.path(out, "cache")
 st <- readRDS(file.path(cache, "static.rds")); sc <- readRDS(file.path(cache, "scenarios.rds"))
 aux <- readRDS(file.path(cache, "stage2_for_variants.rds"))
 cells <- st$cells; pcols <- st$pred_cols; clim <- st$clim_cols; SEED <- 123456L; FIT_SEED <- 123459L
@@ -32,7 +32,7 @@ tss_at <- function(y, p, t) mean(p[y == 1] >= t) + mean(p[y == 0] < t) - 1
 threads <- 2L  # low memory: each ranger thread holds its own prediction buffers
 
 fit3 <- function(x, f, np) {
-  set.seed(SEED)
+  set.seed(FIT_SEED)
   g <- suppressWarnings(glm(f, data = x, family = binomial()))
   r <- ranger(f, data = x, num.trees = 1000, mtry = floor(sqrt(np)), seed = FIT_SEED, num.threads = threads)
   b <- gbm(f, data = x, distribution = "bernoulli", n.trees = 1000, interaction.depth = 3, shrinkage = 0.01, n.minobsinnode = 5, bag.fraction = 0.75, verbose = FALSE)
@@ -50,11 +50,11 @@ pr3 <- function(m, x, size = 50000L) {
 }
 only <- commandArgs(trailingOnly = TRUE)[-1]
 variants <- list(
-  distance_fixed = list(keep = rep(TRUE, nrow(ms)), drop = character(), fix = TRUE),
   no_dung = list(keep = !ms$dung, drop = character()),
   tiger_only = list(keep = ms$survey == "tiger", drop = character()),
   time_aligned = list(keep = rep(TRUE, nrow(ms)), drop = c("landcover", "dynamicworld_prob", "evi", "human_footprint")),
-  no_human = list(keep = rep(TRUE, nrow(ms)), drop = c("human_footprint", "dist_to_settlements", "dist_to_roads", "dist_to_private_land"))
+  no_human = list(keep = rep(TRUE, nrow(ms)), drop = c("human_footprint", "dist_to_settlements", "dist_to_roads", "dist_to_private_land")),
+  no_dist_pa = list(keep = rep(TRUE, nrow(ms)), drop = "dist_to_protected_areas")
 )
 if (length(only)) variants <- variants[only]
 base0 <- st$static
@@ -62,10 +62,6 @@ res <- list(); per <- list()
 for (nm in names(variants)) {
   v <- variants[[nm]]; use <- setdiff(pcols, v$drop)
   ms_v <- ms; base <- base0
-  if (isTRUE(v$fix)) {
-    ms_v$dist_to_settlements <- aux$st_settle; ms_v$dist_to_private_land <- aux$st_private
-    base$dist_to_settlements <- aux$static_settle; base$dist_to_private_land <- aux$static_private
-  }
   x <- ms_v[v$keep, ]; ok_cells <- complete.cases(base[, use, drop = FALSE])
   f <- as.formula(paste("response ~", paste(use, collapse = " + ")))
   cat("Variant", nm, ":", nrow(x), "stations,", length(use), "predictors\n")
@@ -93,8 +89,9 @@ for (nm in names(variants)) {
     auc = auc(x$response, p), tss = max(tv), auc_within = auc(x$response[w], p[w]), tss_within_at_threshold = tss_at(x$response[w], p[w], thr),
     auc_elephant = if (sum(e) > 0) auc(x$response[e], p[e]) else NA_real_,
     habitat_km2 = a0, habitat_outside_pa_pct = 100 * mean(!pav[h]), map_r = cor(mp, pv, use = "complete"),
+    schoener_d = { i <- !is.na(mp) & !is.na(pv); 1 - 0.5 * sum(abs(mp[i] / sum(mp[i]) - pv[i] / sum(pv[i]))) },
     habitat_jaccard = sum(h & pv >= thr0, na.rm = TRUE) / sum(h | pv >= thr0, na.rm = TRUE),
-    core_km2 = sum(core) * cell, core_outside_pa_pct = 100 * mean(!pav[core]), core_outside_pa_km2 = sum(core & !pav) * cell,
+    high_km2 = sum(h & cnt >= 45) * cell, core_km2 = sum(core) * cell, core_outside_pa_pct = 100 * mean(!pav[core]), core_outside_pa_km2 = sum(core & !pav) * cell,
     core_top25_pct = 100 * mean(top25[core]), core_jaccard = sum(core & core0) / sum(core | core0), primary_core_retained_pct = 100 * sum(core & core0) / sum(core0),
     n_loss = sum(chg < 0), change_min = min(chg), change_max = max(chg))
   if (nm == "no_human") {
@@ -106,6 +103,7 @@ for (nm in names(variants)) {
     r0$incident_auc_settled <- mean(vapply(z, function(u) mean(rf < u) + 0.5 * mean(rf == u), 0))
   } else { r0$exposure_r_vs_primary <- NA_real_; r0$exposure_top15_overlap <- NA_real_; r0$incident_auc_settled <- NA_real_ }
   res[[nm]] <- r0
+  saveRDS(list(map = mp, core = core, threshold = thr), file.path(cache, sprintf("variant_%s_map.rds", nm)))
   write.csv(r0, file.path(tb, sprintf("variant_%s.csv", nm)), row.names = FALSE)
   write.csv(per[[nm]], file.path(tb, sprintf("variant_%s_projections.csv", nm)), row.names = FALSE)
   print(t(r0))

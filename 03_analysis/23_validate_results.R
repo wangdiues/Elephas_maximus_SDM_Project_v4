@@ -8,15 +8,14 @@
 suppressPackageStartupMessages({ library(terra); library(sf); library(yaml) })
 args <- commandArgs(trailingOnly = TRUE)
 run <- normalizePath(args[[1]], winslash = "/", mustWork = TRUE)
-sens <- normalizePath(args[[2]], winslash = "/", mustWork = TRUE)
 d <- function(...) file.path(run, ...)
 cfg <- read_yaml("00_governance/config.yaml")
-out_dir <- file.path("05_manuscripts", "Journal of Wildlife Management")
+out_dir <- Sys.getenv("JWM_OUT", file.path("05_manuscripts", "Journal of Wildlife Management"))
+rev_dir <- Sys.getenv("REV_OUT", file.path("04_outputs", "revision_jwm"))
 
-led <- read.csv(file.path("05_manuscripts", "manuscript_claim_ledger.csv"), stringsAsFactors = FALSE)
+led <- read.csv(file.path(Sys.getenv("LEDGER_DIR", "05_manuscripts"), "manuscript_claim_ledger.csv"), stringsAsFactors = FALSE)
 xtr <- read.csv(file.path(out_dir, "jwm_extra_numbers.csv"), stringsAsFactors = FALSE)
-sen <- read.csv(file.path("05_manuscripts", "sensitivity_no_dist_pa", "claim_ledger_no_dist_pa.csv"), stringsAsFactors = FALSE)
-agr <- read.csv(file.path("05_manuscripts", "sensitivity_no_dist_pa", "map_agreement.csv"), stringsAsFactors = FALSE)
+sen <- read.csv(file.path(rev_dir, "tables", "variant_no_dist_pa.csv"), stringsAsFactors = FALSE)
 rep_v <- function(k) {
   for (t in list(led, xtr)) if (k %in% t$key) return(as.numeric(t$value[t$key == k]))
   stop("No reported value: ", k)
@@ -79,7 +78,7 @@ D <- as.matrix(dist(xy)); diag(D) <- Inf
 nn <- t(apply(D, 1, function(v) order(v)[1:5]))
 e <- (y - p) - mean(y - p)
 wsum <- sum(vapply(seq_len(nrow(nn)), function(i) sum(e[i] * e[nn[i, ]]), 0))
-chk("Evaluation", "ensemble Moran's I, projected distance", 0.194, (length(e) / (5 * length(e))) * wsum / sum(e^2), 0.0006)
+chk("Evaluation", "ensemble Moran's I, projected distance", rep_v("ensemble_moran_projected"), (length(e) / (5 * length(e))) * wsum / sum(e^2), 0.0006)
 D0 <- as.matrix(dist(cbind(oof$longitude, oof$latitude))); diag(D0) <- Inf
 nn0 <- t(apply(D0, 1, function(v) order(v)[1:5]))
 k("Evaluation", "ensemble_moran_i", sum(vapply(seq_len(nrow(nn0)), function(i) sum(e[i] * e[nn0[i, ]]), 0)) / (5 * sum(e^2)), 0.0006)
@@ -124,12 +123,23 @@ k("Present habitat", "pa_area_suitable_pct", 100 * sum(suit & pav) / sum(dom & p
 el <- values(project(el_r, pres, method = "bilinear"), mat = FALSE)
 k("Present habitat", "present_suitable_below_1000m_pct", 100 * sum(suit & el <= 1000, na.rm = TRUE) / sum(suit), 0.3)
 k("Present habitat", "present_suitable_above_3000m_km2", sum(suit & el > 3000, na.rm = TRUE) * cell, 3)
-k("Present habitat", "pa_above_2000m_pct", 100 * mean(el[dom & pav] > 2000, na.rm = TRUE), 0.5)
+k("Present habitat", "pa_above_2000m_pct", 100 * mean(el[pav & !is.na(el)] > 2000), 0.5)
 k("Present habitat", "absence_stations_above_3000m", sum(y == 0 & st_el > 3000, na.rm = TRUE), 0)
 bh <- values(rasterize(vect(st_transform(aoi, crs(pres))), pres, field = 1, background = 0), mat = FALSE) == 1
 ex_c <- bh & !dom
-chk("Present habitat", "excluded area: median elevation (m)", 4674, median(el[ex_c], na.rm = TRUE), 30)
-chk("Present habitat", "excluded area: share below 2,000 m (%)", 0.3, 100 * mean(el[ex_c] < 2000, na.rm = TRUE), 0.2)
+lim <- read.csv(file.path(rev_dir, "revision_numbers_limit.csv")); lv <- function(x) as.numeric(lim$value[lim$key == x])
+chk("Present habitat", "excluded area: median elevation (m)", lv("domain_excluded_median_elev_m"), median(el[ex_c], na.rm = TRUE), 30)
+chk("Present habitat", "excluded area: share below 2,000 m (%)", lv("domain_excluded_below_2000_pct"), 100 * mean(el[ex_c] < 2000, na.rm = TRUE), 0.2)
+# Input layers actually used by the run
+chk("Input layers", "highest elevation in modeled domain (m)", 3000, max(el[dom], na.rm = TRUE), 25)
+tmpl <- rast(d("02_data_intermediate", "template_grid.tif"))
+for (lyr in list(c("dist_to_settlements", "building_footprints_harmonized.gpkg"), c("dist_to_private_land", "2022_07_01_cadastral_fixed_harmonized.gpkg"))) {
+  dl <- rast(d("01_processed_data", "distance_layers", paste0(lyr[1], ".tif")))
+  touched <- rasterize(vect(d("02_data_intermediate", lyr[2])), tmpl, field = 1, background = NA, touches = TRUE)
+  chk("Input layers", paste0(lyr[1], ": zero-distance cells equal touched cells"), sum(!is.na(values(touched))), sum(values(dl, mat = FALSE) == 0, na.rm = TRUE), 0)
+}
+all_stg <- read.csv(file.path(rev_dir, "revision_numbers_stage2b.csv"))
+chk("Input layers", "building cells reported", as.numeric(all_stg$value[all_stg$key == "buildings_cells_new"]), sum(!is.na(values(rasterize(vect(d("02_data_intermediate", "building_footprints_harmonized.gpkg")), tmpl, field = 1, background = NA, touches = TRUE)))), 0)
 
 # ── 60 projections, recalculated from each raster ────────────────────────────
 fut <- d("04_future_projections")
@@ -166,10 +176,11 @@ for (sp in unique(tab$ssp)) for (pe in unique(tab$period)) {
 }
 chk("Future", "GCM-mean change: minimum (%)", round(min(as.numeric(led$value[grepl("^future_change_pct_", led$key)])), 1), min(mean_chg), 0.06)
 chk("Future", "GCM-mean change: maximum (%)", round(max(as.numeric(led$value[grepl("^future_change_pct_", led$key)])), 1), max(mean_chg), 0.06)
-chk("Future", "GCM-mean loss: minimum (km2)", 7, min(loss), 1)
-chk("Future", "GCM-mean loss: maximum (km2)", 183, max(loss), 1)
-chk("Future", "GCM-mean gain: minimum (km2)", 687, min(gain), 1)
-chk("Future", "GCM-mean gain: maximum (km2)", 1976, max(gain), 1)
+hs_t <- read.csv(d("05_change_metrics", "habitat_area_change_summary.csv"))
+chk("Future", "GCM-mean loss: minimum (km2)", min(hs_t$loss_km2), min(loss), 1)
+chk("Future", "GCM-mean loss: maximum (km2)", max(hs_t$loss_km2), max(loss), 1)
+chk("Future", "GCM-mean gain: minimum (km2)", min(hs_t$gain_km2), min(gain), 1)
+chk("Future", "GCM-mean gain: maximum (km2)", max(hs_t$gain_km2), max(gain), 1)
 
 # ── Refugia counted directly from the 60 projections ─────────────────────────
 core <- suit & cnt == 60; high <- suit & cnt >= 45
@@ -203,7 +214,7 @@ k("Novelty", "bio05_station_max", max(md$BIO05, na.rm = TRUE), 0.06)
 # ── Human pressure, exposure and conflict records ────────────────────────────
 nr <- function(r) { v <- values(r, na.rm = TRUE); q <- quantile(v, c(0.02, 0.98)); clamp((r - q[1]) / (q[2] - q[1]), 0, 1, values = TRUE) }
 fp <- resample(rast(d("02_data_intermediate", "human_footprint_harmonized.tif")), pres, method = "bilinear")
-b <- rasterize(vect(d("02_data_intermediate", "building_footprints_harmonized.gpkg")), pres, field = 1, background = NA)
+b <- rasterize(vect(d("02_data_intermediate", "building_footprints_harmonized.gpkg")), pres, field = 1, background = NA, touches = TRUE)
 hp <- nr(nr(fp) + nr(1 / (1 + distance(b) / 1000)))
 hpv <- values(hp, mat = FALSE); top <- dom & !is.na(hpv) & hpv >= quantile(hpv[dom], 0.75, na.rm = TRUE)
 k("Human pressure", "present_suitable_in_top25_human_pressure_pct", 100 * sum(suit & top) / sum(suit), 0.06)
@@ -222,16 +233,17 @@ k("Human pressure", "hwc_in_suitable_habitat_pct", 100 * mean(hs[ok] >= thr_l, n
 k("Human pressure", "hwc_in_top15_exposure_pct", 100 * mean(hx[ok] >= quantile(xv[dom], 0.85, na.rm = TRUE)), 0.06)
 
 # ── Sensitivity run without distance to protected areas ──────────────────────
-sr <- rast(file.path(sens, "03_present_suitability", "suitability_present_ensemble.tif"))
-sthr <- read.csv(file.path(sens, "02_models", "evaluation_all.csv")); sthr <- sthr$threshold[sthr$algorithm == "ensemble"][1]
-sv <- values(sr, mat = FALSE); ss <- !is.na(sv) & sv >= sthr
-chk("Sensitivity", "habitat without distance to protected areas (km2)", as.numeric(sen$value[sen$key == "present_suitable_km2"]), sum(ss) * cell, 1)
-chk("Sensitivity", "outside network without that predictor (%)", 100 - as.numeric(sen$value[sen$key == "present_suitable_in_pa_pct"]), 100 * mean(!pav[ss]), 0.5)
+vm <- readRDS(file.path(rev_dir, "cache", "variant_no_dist_pa_map.rds"))
+vc <- readRDS(file.path(rev_dir, "cache", "static.rds"))$cells
+sv <- rep(NA_real_, length(pv)); sv[vc] <- vm$map; sthr <- vm$threshold
+ss <- !is.na(sv) & sv >= sthr & !is.na(pv)
+chk("Sensitivity", "habitat without distance to protected areas (km2)", sen$habitat_km2, sum(ss) * cell, 1)
+chk("Sensitivity", "outside network without that predictor (%)", sen$habitat_outside_pa_pct, 100 * mean(!pav[ss]), 0.5)
 ok2 <- is.finite(pv) & is.finite(sv)
-chk("Sensitivity", "map Pearson r", agr$value[agr$key == "map_pearson_r"], cor(pv[ok2], sv[ok2]), 0.0006)
-chk("Sensitivity", "map Jaccard", agr$value[agr$key == "map_jaccard"], sum(suit & ss) / sum(suit | ss), 0.0006)
+chk("Sensitivity", "map Pearson r", sen$map_r, cor(pv[ok2], sv[ok2]), 0.0006)
+chk("Sensitivity", "map Jaccard", sen$habitat_jaccard, sum(suit & ss, na.rm = TRUE) / sum(suit | ss, na.rm = TRUE), 0.0006)
 a <- pv[ok2]; b2 <- sv[ok2]
-chk("Sensitivity", "map Schoener D", agr$value[agr$key == "map_schoener_d"], 1 - 0.5 * sum(abs(a / sum(a) - b2 / sum(b2))), 0.0006)
+chk("Sensitivity", "map Schoener D", sen$schoener_d, 1 - 0.5 * sum(abs(a / sum(a) - b2 / sum(b2))), 0.0006)
 
 # ── Predictor statistics quoted in the text ──────────────────────────────────
 pres_i <- md$response == 1
@@ -245,7 +257,7 @@ chk("Predictors", "driest-month precipitation, absences (mm)", 5.0, med0("BIO14"
 chk("Predictors", "terrain ruggedness, presences", 44, med("tri"), 1)
 chk("Predictors", "terrain ruggedness, absences", 72, med0("tri"), 1)
 chk("Predictors", "distance to protected areas, presences (m)", 0, med("dist_to_protected_areas"), 0.5)
-chk("Predictors", "distance to protected areas, absences (m)", 1250, med0("dist_to_protected_areas"), 1)
+k("Predictors", "dist_pa_nondetect_median_m", med0("dist_to_protected_areas"), 1)
 gl <- readRDS(d("02_models", "model_glm.rds")); co <- summary(gl)$coefficients
 k("Predictors", "glm_coef_BIO18", co["BIO18", "Estimate"], 0.000006)
 k("Predictors", "glm_se_BIO18", co["BIO18", "Std. Error"], 0.000006)

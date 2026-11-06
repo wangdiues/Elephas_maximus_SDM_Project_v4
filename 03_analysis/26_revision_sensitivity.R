@@ -12,7 +12,7 @@ source(file.path("03_analysis", "00_publication_helpers.R"))
 run <- normalizePath(commandArgs(trailingOnly = TRUE)[[1]], winslash = "/", mustWork = TRUE)
 d <- function(...) file.path(run, ...)
 cfg <- read_yaml("00_governance/config.yaml")
-out <- file.path("04_outputs", "revision_jwm"); tb <- file.path(out, "tables"); cache <- file.path(out, "cache")
+out <- Sys.getenv("REV_OUT", file.path("04_outputs", "revision_jwm")); tb <- file.path(out, "tables"); cache <- file.path(out, "cache")
 fig <- file.path(out, "figures"); dir.create(fig, showWarnings = FALSE)
 led <- list()
 add <- function(key, value, source = "") led[[length(led) + 1]] <<- data.frame(key = key, value = as.character(value), source = source)
@@ -35,7 +35,7 @@ pa <- st_transform(st_make_valid(st_read(cfg$vectors$protected_areas, quiet = TR
 pav <- values(rasterize(vect(pa), pres, field = 1, background = 0), mat = FALSE)[cells] == 1
 nr <- function(r) { v <- values(r, na.rm = TRUE); q <- quantile(v, c(0.02, 0.98)); clamp((r - q[1]) / (q[2] - q[1]), 0, 1, values = TRUE) }
 fp <- resample(rast(d("02_data_intermediate", "human_footprint_harmonized.tif")), pres, method = "bilinear")
-bl <- rasterize(vect(d("02_data_intermediate", "building_footprints_harmonized.gpkg")), pres, field = 1, background = NA)
+bl <- rasterize(vect(d("02_data_intermediate", "building_footprints_harmonized.gpkg")), pres, field = 1, background = NA, touches = TRUE)
 db <- distance(bl) / 1000
 prox <- nr(1 / (1 + db)); fpn <- nr(fp); hp <- nr(fpn + prox)
 hpv <- values(hp, mat = FALSE)[cells]; top25 <- !is.na(hpv) & hpv >= quantile(hpv, 0.75, na.rm = TRUE)
@@ -114,7 +114,7 @@ add("habitat_outside_all_districts_km2", round(sum(!suit_cells %in% ins) * cell,
 add("habitat_cells_in_two_districts", sum(duplicated(ext_df$cell[!is.na(ext_df$s) & ext_df$s >= thr])), "cell-centre extract by district")
 add("area_at_rounded_threshold_km2", round(sum(pv >= round(thr, 3)) * cell, 2), "present map")
 add("area_at_exact_threshold_km2", round(sum(pv >= thr) * cell, 2), "present map")
-pu <- read.csv(file.path("05_manuscripts", "manuscript_claim_ledger_pa_units.csv"))
+pu <- read.csv(file.path(Sys.getenv("LEDGER_DIR", "05_manuscripts"), "manuscript_claim_ledger_pa_units.csv"))
 add("pa_unit_sum_raw_km2", round(sum(pu$suitable_km2), 2), "pa_units ledger")
 add("pa_unit_sum_rounded_rows_km2", sum(round(pu$suitable_km2)), "pa_units ledger")
 add("pa_union_km2", round(sum(pv >= thr & pav) * cell, 2), "rasterized union")
@@ -301,7 +301,7 @@ mb <- do.call(rbind, lapply(list(c(0, 5), c(5, 10), c(10, 20), c(20, 40), c(40, 
 
 # ── 2.7 Interaction-exposure audit ───────────────────────────────────────────
 sn <- nr(pres); ex <- sqrt(sn * hp); xv <- values(ex, mat = FALSE)[cells]
-fx2 <- values(rast(file.path("05_manuscripts", "interaction_exposure_present.tif")), mat = FALSE)[cells]
+fx2 <- values(rast(file.path(Sys.getenv("LEDGER_DIR", "05_manuscripts"), "interaction_exposure_present.tif")), mat = FALSE)[cells]
 add("exposure_recalc_r", round(cor(xv, fx2, use = "complete"), 4), "rebuilt versus manuscript raster")
 snv <- values(sn, mat = FALSE)[cells]
 add("cor_suitability_humanpressure", round(cor(snv, hpv, use = "complete", method = "spearman"), 3), "domain cells")

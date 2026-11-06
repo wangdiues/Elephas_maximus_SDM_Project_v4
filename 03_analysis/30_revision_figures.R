@@ -10,8 +10,8 @@ source(file.path("03_analysis", "00_publication_helpers.R"))
 run <- normalizePath(commandArgs(trailingOnly = TRUE)[[1]], winslash = "/", mustWork = TRUE)
 d <- function(...) file.path(run, ...)
 cfg <- read_yaml("00_governance/config.yaml")
-out <- file.path("04_outputs", "revision_jwm"); tb <- file.path(out, "tables"); fig <- file.path(out, "figures"); cache <- file.path(out, "cache")
-jwm_fig <- file.path("05_manuscripts", "Journal of Wildlife Management", "figures")
+out <- Sys.getenv("REV_OUT", file.path("04_outputs", "revision_jwm")); tb <- file.path(out, "tables"); fig <- file.path(out, "figures"); cache <- file.path(out, "cache")
+jwm_fig <- file.path(Sys.getenv("JWM_OUT", file.path("05_manuscripts", "Journal of Wildlife Management")), "figures")
 
 pres <- rast(d("03_present_suitability", "suitability_present_ensemble.tif"))
 nr <- function(r) { v <- values(r, na.rm = TRUE); q <- quantile(v, c(0.02, 0.98)); clamp((r - q[1]) / (q[2] - q[1]), 0, 1, values = TRUE) }

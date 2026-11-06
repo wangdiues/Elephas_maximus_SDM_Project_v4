@@ -10,7 +10,7 @@ suppressPackageStartupMessages({ library(terra); library(sf); library(ranger); l
 source(file.path("03_analysis", "00_spatial_alignment.R"))
 run <- normalizePath(commandArgs(trailingOnly = TRUE)[[1]], winslash = "/", mustWork = TRUE)
 d <- function(...) file.path(run, ...)
-out <- file.path("04_outputs", "revision_jwm"); cache <- file.path(out, "cache")
+out <- Sys.getenv("REV_OUT", file.path("04_outputs", "revision_jwm")); cache <- file.path(out, "cache")
 dir.create(cache, recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out, "tables"), showWarnings = FALSE)
 

@@ -9,7 +9,7 @@ source(file.path("03_analysis", "00_publication_helpers.R"))
 run <- normalizePath(commandArgs(trailingOnly = TRUE)[[1]], winslash = "/", mustWork = TRUE)
 d <- function(...) file.path(run, ...)
 cfg <- read_yaml("00_governance/config.yaml")
-out_dir <- file.path("05_manuscripts", "Journal of Wildlife Management")
+out_dir <- Sys.getenv("JWM_OUT", file.path("05_manuscripts", "Journal of Wildlife Management"))
 fig_dir <- file.path(out_dir, "figures")
 dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -17,8 +17,8 @@ led <- list()
 add <- function(key, value, unit = "", source = "") led[[length(led) + 1]] <<-
   data.frame(key = key, value = value, unit = unit, source = source, run_id = basename(run))
 
-ledger <- read.csv(file.path("05_manuscripts", "manuscript_claim_ledger.csv"), stringsAsFactors = FALSE)
-thr <- as.numeric(ledger$value[ledger$key == "threshold"])
+ledger <- read.csv(file.path(Sys.getenv("LEDGER_DIR", "05_manuscripts"), "manuscript_claim_ledger.csv"), stringsAsFactors = FALSE)
+thr <- read.csv(d("02_models", "evaluation_all.csv")); thr <- thr$threshold[thr$algorithm == "ensemble"][1]
 
 # ── Station sources and evaluation subsets ───────────────────────────────────
 oof <- read.csv(d("01_processed_data", "oof_predictions.csv"))
@@ -208,10 +208,10 @@ add("dung_refit_jaccard", round(sum(hab & hab2) / sum(hab | hab2), 3), "", "refi
 add("dung_refit_core_suitable_pct", round(100 * mean(hab2[core_v]), 1), "%", "accepted core refugia x refit map")
 
 # ── Protected-area elevation and exposure by district ────────────────────────
-el_v <- values(elev, mat = FALSE); in_pa <- pav == 1 & !is.na(values(pres, mat = FALSE))
+el_v <- values(elev, mat = FALSE); in_pa <- pav == 1 & !is.na(el_v)
 add("pa_above_2000m_pct", round(100 * mean(el_v[in_pa] > 2000, na.rm = TRUE), 1), "%", "elevation x PA network")
 add("pa_below_1000m_pct", round(100 * mean(el_v[in_pa] <= 1000, na.rm = TRUE), 1), "%", "elevation x PA network")
-expo <- project(rast(file.path("05_manuscripts", "interaction_exposure_present.tif")), pres, method = "near")
+expo <- project(rast(file.path(Sys.getenv("LEDGER_DIR", "05_manuscripts"), "interaction_exposure_present.tif")), pres, method = "near")
 dz <- st_read(file.path(cfg$vectors$root, "Dzongkhag Boundary", "Dzongkhag Boundary.shp"), quiet = TRUE)
 st_crs(dz) <- 3857L
 dz <- st_transform(st_make_valid(dz), crs(pres))
@@ -225,6 +225,15 @@ tz <- sort(100 * tapply(top15, dz_name, sum, na.rm = TRUE) / sum(top15, na.rm = 
 print(round(ez[1:7], 3)); print(round(tz[1:7], 1))
 for (i in 1:5) add(sprintf("exposure_mean_rank%d", i), names(ez)[i], "district", "exposure x Dzongkhag")
 for (i in 1:5) add(sprintf("exposure_top15_rank%d", i), names(tz)[i], "district", "exposure x Dzongkhag")
+
+add("dist_pa_nondetect_median_m", round(median(dat$dist_to_protected_areas[dat$response == 0], na.rm = TRUE)), "m", "modeling_dataset.csv")
+
+# Moran's I of held-out residuals with 5 nearest neighbors in projected distance
+xy_m <- st_coordinates(st_transform(st_as_sf(oof, coords = c("longitude", "latitude"), crs = 4326), 32645))
+D_m <- as.matrix(dist(xy_m)); diag(D_m) <- Inf
+nn_m <- t(apply(D_m, 1, function(v) order(v)[1:5]))
+e_m <- (oof$response - oof$pred_ensemble) - mean(oof$response - oof$pred_ensemble)
+add("ensemble_moran_projected", round(sum(vapply(seq_len(nrow(nn_m)), function(i) sum(e_m[i] * e_m[nn_m[i, ]]), 0)) / (5 * sum(e_m^2)) * 1, 3), "", "OOF residuals, 5 nearest neighbors, UTM 45N")
 
 write.csv(do.call(rbind, led), file.path(out_dir, "jwm_extra_numbers.csv"), row.names = FALSE)
 
@@ -289,14 +298,14 @@ ga <- ga[ga$suit %in% TRUE, ]
 ga$class <- ifelse(ga$core %in% TRUE & ga$pa == 0, "Refugia, unprotected",
                    ifelse(ga$core %in% TRUE, "Refugia, protected", "Other habitat"))
 aoi <- st_transform(st_read(cfg$vectors$aoi_bhutan, quiet = TRUE), crs(pres))
-pct <- as.numeric(ledger$value[ledger$key == "refugia_core_in_pa_pct"])
+pct <- as.numeric(ledger$value[ledger$key == "present_suitable_in_pa_pct"])
 pg <- ggplot() +
   geom_sf(data = aoi, fill = "#F2EFE6", colour = "grey35", linewidth = 0.2) +
   geom_tile(data = ga, aes(x, y, fill = class), width = 250, height = 250) +
   scale_fill_manual(values = c("Refugia, unprotected" = "#D55E00", "Refugia, protected" = "#009E73",
                                "Other habitat" = "#E8C75A"), name = NULL) +
   coord_sf(crs = st_crs(aoi), expand = FALSE) +
-  labs(title = sprintf("%.0f%% of elephant climate refugia\nlie outside protected areas", 100 - pct)) +
+  labs(title = sprintf("%.0f%% of modeled elephant habitat\nlies outside protected areas", 100 - pct)) +
   theme_void(base_size = 6, base_family = "Arial") +
   theme(plot.title = element_text(face = "bold", size = 7.5, hjust = 0.5, lineheight = 0.95),
         legend.position = "bottom", legend.key.size = grid::unit(2, "mm"),
